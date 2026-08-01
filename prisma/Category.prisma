@@ -1,0 +1,44 @@
+model Category {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  name          String   @unique
+  imageUrl      String
+  availableTags String[]
+  description   String   @default("")
+  active        Boolean  @default(true)
+
+  subCategories    SubCategory[]
+  availableCoupons CouponCategories[]
+
+  createdAt DateTime  @default(now())
+}
+
+model SubCategory {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  name        String  @unique
+  description String  @default("")
+  active      Boolean @default(true)
+
+  categoryId String   @db.ObjectId
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  varients Variant[]
+
+  createdAt DateTime @default(now())
+}
+
+model Variant {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  name        String  @unique
+  description String  @default("")
+  active      Boolean @default(true)
+
+  subCategoryId String      @db.ObjectId
+  subCategory   SubCategory @relation(fields: [subCategoryId], references: [id])
+
+  products ProductVariant[]
+
+  createdAt DateTime @default(now())
+}

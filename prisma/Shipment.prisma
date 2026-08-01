@@ -1,0 +1,41 @@
+model Shipment {
+  id                 String         @id @default(auto()) @map("_id") @db.ObjectId
+  orderId            String         @db.ObjectId
+  vendorId           String?        @db.ObjectId
+  warehouseId        String?        @db.ObjectId
+  // Top-level Shipway identifiers (queryable)
+  shipwayOrderId     String? // the order_id you sent to Shipway (merchant order id)
+  awb                String? // assigned AWB from Shipway
+  carrierId          String? // e.g., shipway carrier id
+  pickupId           String? // if Shipway returns a pickup reference
+  labelUrl           String? // shipping label URL returned by Shipway
+  // status: CREATED, SHIPPED, CANCELLED, ERROR, etc.
+  status             String
+  // order item ids (keeps relation with order items)
+  orderItemIds       String[] // list of OrderItem ids
+  // order items in this shipment
+  allocations        Json?
+  // optional: chunk index (helps reconstruct deterministic order numbers)
+  chunkIndex         Int?
+  // ==== NEW return-specific fields ====
+  isReturn           Boolean        @default(false)
+  returnRequestId    String?        @db.ObjectId
+  // we add relation here (owner of FK)
+  returnRequest      ReturnRequest? @relation(fields: [returnRequestId], references: [id])
+  originalShipmentId String?        @db.ObjectId
+  // ====================================
+  //Webhook meta data for tracking
+  shipwayMeta        Json?
+  trackingHistory    Json? // [{status: "IN_TRANSIT", time: "...", location: "..."}]
+  trackingUrl        String?
+  trackingStatus     String? // current canonical status
+  pickupDate         String?
+  expectedDelivery   DateTime? // ETA from Shipway
+  deliveredAt        DateTime? // actual delivery timestamp
+  // relation fields
+  order              Order          @relation(fields: [orderId], references: [id])
+  vendor             VendorProfile? @relation(fields: [vendorId], references: [id])
+  warehouse          Warehouse?     @relation(fields: [warehouseId], references: [id])
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+}

@@ -1,0 +1,41 @@
+enum VendorPayoutStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  INITIATED
+  REVERSED
+  REJECTED
+}
+
+model VendorPayout {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  items      VendorPayoutItem[]
+  marketFee  Float              @default(0)
+  cycleStart DateTime
+  cycleEnd   DateTime
+  finalized  Boolean            @default(false) // false means draft
+  status     VendorPayoutStatus @default(PENDING)
+
+  vendorProfileId String        @db.ObjectId
+  vendorProfile   VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+
+  createdAt              DateTime       @default(now())
+  //razorpayx ids
+  razorpayPayoutId       String?
+  razorpayReferenceId    String?
+  razorpayIdempotencyKey String?
+  retryCount             Int            @default(0)
+  notifications          Notification[]
+}
+
+model VendorPayoutItem {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  orderItemId    String       @db.ObjectId
+  orderItem      OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  commission     Float
+  note           String?
+  vendorPayoutId String       @db.ObjectId
+  vendorPayout   VendorPayout @relation(fields: [vendorPayoutId], references: [id], onDelete: Cascade)
+}

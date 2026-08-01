@@ -1,0 +1,74 @@
+type BankInfo {
+  acNo         String
+  acHolderName String
+  ifsc         String
+  bankName     String?
+  accountType  String?
+}
+
+enum RefundMethod {
+  SOURCE
+  WALLET
+  BANK
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  REFUNDED
+  REJECTED
+}
+
+enum JourneyStatus {
+  PENDING
+  PICKUP_SCHEDULED
+  PICKUP_FAILED
+  PICKUP_CANCELLED
+  PICKUP_DELAYED
+  PICKED_UP
+  RETURN_IN_TRANSIT
+  RETURN_DELIVERED
+  RETURN_CANCELLED
+  RETURN_EXCEPTION
+}
+
+/// return reason cache (optional but useful)
+model ReturnReason {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  reasonText String   @unique
+  externalId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model ReturnRequest {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  orderItemId    String       @unique @db.ObjectId
+  orderItem      OrderItem    @relation(fields: [orderItemId], references: [id])
+  quantity       Int
+  reason         String
+  imageUrls      String[]
+  refundMethod   RefundMethod
+  bankInfo       BankInfo?
+  status         RefundStatus @default(PENDING)
+  rejectReason   String?
+  detailedReason String?
+
+  pickupAddressId String?  @db.ObjectId
+  pickupAddress   Address? @relation(fields: [pickupAddressId], references: [id])
+  adminNote       String?
+
+  isReturnCreated Boolean        @default(false) // set true when you call Shipway
+  shipwayMeta     Json? // store Shipway response or errors
+  returnType      String? // "R" | "E"
+  rmaNumber       String?
+  // back-reference: all shipments created for this return
+  shipments       Shipment[]
+  // return shipment status
+  journeyStatus   JourneyStatus?
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  notifications Notification[]
+}

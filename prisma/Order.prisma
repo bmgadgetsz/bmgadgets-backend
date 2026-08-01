@@ -1,0 +1,64 @@
+enum OrderStatus {
+  PENDING
+  INITIALIZED
+  PAID
+  CANCELLED
+}
+
+enum PaymentType {
+  COD
+  ONLINE
+}
+
+model Order {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  razorpayOrderId       String?
+  razorpayPaymentId     String?
+  razorpayPaymentMethod String?
+  razorpayPaymentTime   DateTime?
+
+  status      OrderStatus     @default(PENDING)
+  createdById String          @db.ObjectId
+  createdBy   CustomerProfile @relation(fields: [createdById], references: [id])
+  addressId   String          @db.ObjectId
+  address     Address         @relation(fields: [addressId], references: [id], onDelete: Cascade)
+  paymentType PaymentType     @default(ONLINE)
+
+  items          OrderItem[]
+  tempCouponId   String?     @db.ObjectId
+  tempCoupon     Coupon?     @relation(fields: [tempCouponId], references: [id], name: "OrderTempCoupon")
+  couponId       String?     @db.ObjectId
+  coupon         Coupon?     @relation(fields: [couponId], references: [id], name: "OrderPermCoupon")
+  subtotal       Float
+  gst            Float
+  couponDiscount Float
+  shippingCost   Float       @default(0)
+
+  createdAt     DateTime       @default(now())
+  // opposite relation: shipments that belong to this order
+  shipments     Shipment[]
+  notifications Notification[]
+}
+
+model OrderItem {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  orderId String @db.ObjectId
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  priceId String @db.ObjectId
+  price   Price  @relation(fields: [priceId], references: [id])
+
+  quantity         Int
+  returnedQuantity Int                @default(0)
+  inPayoutItems    VendorPayoutItem[]
+
+  // Shipment-related
+  shipmentStatus String? // "CREATED", "SHIPPED", "DELIVERED", etc.
+  carrierId      String? // Shipway carrier id
+  awbNumber      String? // airway bill number
+  shipmentLabel  String? // PDF URL or base64 from Shipway
+  pickupId       String? // if Shipway generates pickup reference
+  refundRequest  ReturnRequest?
+}

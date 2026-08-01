@@ -1,0 +1,42 @@
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CANCELED
+}
+
+model Ticket {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title        String
+  description  String
+  status       TicketStatus    @default(OPEN)
+  imageUrl     String?
+  cancelReason String?
+  comments     TicketComment[]
+
+  // Reference to the user who created the ticket, could be both customer and vendor
+  createdById String? @db.ObjectId
+  createdBy   User?   @relation("TicketCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  // Reference to the admin who last interacted with the ticket 
+  lastModifiedById String? @db.ObjectId
+  lastModifiedBy   User?   @relation("TicketLastModifiedBy", fields: [lastModifiedById], references: [id], onDelete: SetNull)
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  notifications Notification[]
+}
+
+model TicketComment {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  body        String
+  ticketId    String  @db.ObjectId
+  ticket      Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  createdById String? @db.ObjectId
+  createdBy   User?   @relation("TicketCommentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

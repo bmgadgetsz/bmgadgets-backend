@@ -1,0 +1,56 @@
+enum NotificationType {
+  ORDER_CREATED
+  ORDER_CONFIRMED
+  ORDER_SHIPPED
+  RETURN_REQUEST_CREATED
+  RETURN_REQUEST_APPROVED
+  RETURN_REQUEST_REJECTED
+  VENDOR_ONBOARDING_REQUEST_SUBMITTED
+  VENDOR_KYC_SUBMITTED
+  VENDOR_PRODUCT_UPLOADED
+  VENDOR_KYC_APPROVED
+  VENDOR_KYC_REJECTED
+
+  RETURN_INITATED
+  PICKUP_SCHEDULED
+  PICKUP_FAILED
+  DELIVERED
+  FAILED_DELIVERY
+
+  PRODUCT_ACCEPTED
+  PRODUCT_REJECTED
+  PRODUCT_STOCK_LOW
+
+  PAYOUT_INITIATED
+  PAYOUT_COMPLETED
+  PAYOUT_REJECTED
+
+  TICKET_CREATED
+}
+
+model Notification {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  type    NotificationType
+  title   String
+  message String?
+  isRead  Boolean          @default(false)
+
+  receiverId      String         @db.ObjectId
+  receiver        User           @relation(fields: [receiverId], references: [id])
+  orderId         String?        @db.ObjectId
+  order           Order?         @relation(fields: [orderId], references: [id])
+  returnRequestId String?        @db.ObjectId
+  returnRequest   ReturnRequest? @relation(fields: [returnRequestId], references: [id])
+  vendorProfileId String?        @db.ObjectId
+  vendorProfile   VendorProfile? @relation(fields: [vendorProfileId], references: [id])
+  productId       String?        @db.ObjectId
+  product         Product?       @relation(fields: [productId], references: [id])
+  vendorPayoutId  String?        @db.ObjectId
+  vendorPayout    VendorPayout?  @relation(fields: [vendorPayoutId], references: [id])
+  ticketId        String?        @db.ObjectId
+  ticket          Ticket?        @relation(fields: [ticketId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

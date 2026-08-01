@@ -1,0 +1,75 @@
+model VendorProfile {
+  id        String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String  @unique @db.ObjectId
+  user      User    @relation(fields: [userId], references: [id])
+  // new flag to mark seed/origin vendor
+  isOriginO Boolean @default(false)
+
+  // Basic registration fields (required at creation)
+  businessName      String
+  natureOfBusiness  String
+  contactPersonName String
+  email             String
+  mobileNumber      String
+
+  // KYC fields (optional at first, required later via validation in API)
+  alternateMobile            String?
+  companyOwnerName           String?
+  companyAddress             String?
+  authorizedRepresentative   String?
+  gstNumber                  String?
+  panNumber                  String?
+  fssaiLicenseNumber         String?
+  bankAccountNumber          String?
+  accountHolderName          String?
+  bankIfsc                   String?
+  bankName                   String?
+  manufacturingLicenseNumber String?
+  storageLicenseNumber       String?
+
+  // Document URLs
+  gstDocumentUrl          String?
+  panDocumentUrl          String?
+  fssaiDocumentUrl        String?
+  bankProofDocumentUrl    String?
+  manufacturingLicenseUrl String?
+  storageLicenseUrl       String?
+  vendorProfileUrl        String?
+
+  onboardingStatus VendorOnboardingStatus @default(REGISTRATION_PENDING)
+
+  isActive              Boolean        @default(false) //temporarily block vendor
+  isArchived            Boolean        @default(false) //For permanently archiving vendor
+  archivedAt            DateTime?
+  rejectionReason       String?
+  approvedAt            DateTime?
+  product               Product[]
+  payouts               VendorPayout[]
+  warehouses            Warehouse[] // 1:N relation
+  // razorpay contact and fund account id associated with this vendor
+  razorpayContactId     String?
+  razorpayFundAccountId String?
+  razorpayStatus        RazorpayStatus @default(PENDING)
+  // opposite relation: shipments for this vendor
+  shipments             Shipment[]
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  notifications Notification[]
+}
+
+enum VendorOnboardingStatus {
+  REGISTRATION_PENDING // Waiting for Level 1 approval
+  REGISTRATION_APPROVED // Level 1 passed, can log in & submit KYC
+  REGISTRATION_REJECTED // Level 1 rejected
+
+  KYC_PENDING // KYC submitted, waiting review
+  KYC_APPROVED // Fully approved & active
+  KYC_REJECTED // KYC rejected
+}
+
+enum RazorpayStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}

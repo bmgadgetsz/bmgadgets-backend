@@ -1,0 +1,1417 @@
+import env from "@/config/env";
+import prisma from "@/config/prisma";
+import { getIO } from "@/config/socket";
+import {
+  Certification,
+  Prisma,
+  Product,
+  ProductCombo,
+  ProductVariant,
+} from "@/generated/prisma";
+import { sendMail } from "@/services/transporter.service";
+import ApiError from "@/utils/ApiError";
+import isValidObjectId from "@/utils/isValidObjectId";
+import calculatePagination, { PaginationOptions } from "@/utils/pagination";
+import { getPeriodRange, Period } from "@/utils/vendorStats";
+import { status as httpStatus } from "http-status";
+
+const COLLECTION_NAME = "Product"; // check your actual Mongo collection name
+const ATLAS_SEARCH_INDEX = "default"; // Atlas Search index name
+
+type VariantPayload =
+  Prisma.ProductVariantUncheckedCreateWithoutProductInput & {
+    price: number;
+  };
+
+type BulkVariantPayload =
+  Prisma.ProductVariantUncheckedCreateWithoutProductInput & {
+    price: number;
+    variantName: string;
+  };
+
+const createProduct = async (
+  data: Prisma.ProductUncheckedCreateInput & {
+    varients: VariantPayload[];
+  },
+) => {
+  const { varients, ...productData } = data;
+
+  return prisma.product.create({
+    data: {
+      ...productData,
+      varients: {
+        create: varients.map((variant) => {
+          const { price: _p, ...rest } = variant;
+          return {
+            ...rest,
+            prices: {
+              create: {
+                price: variant.price,
+                discountedPrice:
+                  variant.price -
+                  variant.price * ((variant.discountPercentage ?? 0) / 100),
+              },
+            },
+          };
+        }),
+      },
+    },
+    include: {
+      brand: true,
+      hsn: true,
+      varients: {
+        include: {
+          prices: true,
+        },
+      },
+      createdBy: true,
+    },
+  });
+};
+
+const createManyProducts = async (
+  data: (Prisma.ProductCreateInput & {
+    varients: BulkVariantPayload[]; // each item has: price, variantName, plus ProductVariant fields (except variantId)
+  })[],
+) => {
+  // run each product creation in its own transaction so a failure in one
+  // doesn't roll back all the others
+  return Promise.all(
+    data.map((newData, _index) =>
+      prisma.$transaction(async (tx) => {
+        const { varients, ...productData } = newData;
+
+        // 1) Resolve all variant names -> variant records
+        const found = await Promise.all(
+          varients.map((v) =>
+            tx.variant.findUnique({
+              where: { name: v.variantName },
+              select: {
+                id: true,
+                name: true,
+                subCategory: { select: { categoryId: true } },
+              },
+            }),
+          ),
+        );
+
+        // 2) Collect missing variants (by name) and fail if any not found
+        const missing: string[] = [];
+
+        found.forEach((rec, i) => {
+          if (!rec) missing.push(varients[i].variantName);
+        });
+        if (missing.length) {
+          throw new ApiError(
+            httpStatus.BAD_REQUEST,
+            `createManyProducts: Unknown variant(s): ${missing.join(", ")}`,
+          );
+        }
+
+        // 4) Create product with nested variants + prices
+        // Strip helper fields (price, variantName) from each variant payload
+        const product = await tx.product.create({
+          data: {
+            ...productData,
+            varients: {
+              create: varients.map((v, i) => {
+                const { price, variantName: _, ...rest } = v;
+                return {
+                  ...rest, // fields from ProductVariantUncheckedCreateWithoutProductInput EXCLUDING variantId
+                  variantId: found[i]!.id,
+                  prices: { create: { price } },
+                };
+              }),
+            },
+          },
+          include: {
+            brand: true,
+            hsn: true,
+            varients: { include: { prices: true } },
+          },
+        });
+
+        return product;
+      }),
+    ),
+  );
+};
+
+const getProductById = async (id: string) => {
+  const product = await prisma.product.findUnique({
+    where: { id },
+    include: {
+      hsn: true,
+      brand: true,
+      reviews: {
+        where: { approved: true },
+        include: { createdBy: { include: { user: true } } },
+      },
+      varients: {
+        where: { active: true },
+        select: {
+          id: true,
+          pricePerGram: true,
+          weightInGrams: true,
+          warehouseStocks: { where: { productCount: { gt: 0 } } },
+          discountPercentage: true,
+          mfgDate: true,
+          expiryDate: true,
+          variant: {
+            select: {
+              id: true,
+              name: true,
+              subCategory: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: { select: { id: true, name: true } },
+                },
+              },
+            },
+          },
+          prices: { orderBy: { createdAt: "desc" }, take: 1 },
+        },
+      },
+      combos: {
+        where: { active: true },
+        select: {
+          id: true,
+          name: true,
+          weightInGrams: true,
+          description: true,
+          imageUrl: true,
+          warehouseStocks: { where: { comboCount: { gt: 0 } } },
+          items: {
+            select: {
+              quantity: true,
+              productVariant: {
+                select: {
+                  variant: { select: { name: true, description: true } },
+                },
+              },
+            },
+          },
+          prices: { orderBy: { createdAt: "desc" }, take: 1 },
+        },
+      },
+    },
+  });
+  if (!product) throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
+
+  await prisma.product.update({
+    where: { id },
+    data: { visitCount: { increment: 1 } },
+  });
+
+  return {
+    ...product,
+    varients: product.varients.map((v) => ({
+      ...v,
+      inStock: !!v.warehouseStocks.length,
+      totalStock: v.warehouseStocks.reduce(
+        (acc, ws) => acc + (ws.productCount || 0),
+        0,
+      ),
+    })),
+    combos: product.combos.map((c) => ({
+      ...c,
+      inStock: !!c.warehouseStocks.length,
+      totalStock: c.warehouseStocks.reduce(
+        (acc, ws) => acc + (ws.comboCount || 0),
+        0,
+      ),
+    })),
+    subCategory: product.varients[0]?.variant.subCategory,
+    category: product.varients[0]?.variant.subCategory.category,
+    averageReview:
+      product.reviews.reduce((acc, curr) => {
+        return acc + curr.rating;
+      }, 0) / (product.reviews.length || 1),
+    reviewCounts: product.reviews.reduce(
+      (acc, curr) => {
+        if (acc[`${curr.rating}`]) acc[`${curr.rating}`] += 1;
+        else acc[`${curr.rating}`] = 1;
+
+        return acc;
+      },
+      {} as Record<string, number>,
+    ),
+  };
+};
+
+const getPaginatedProducts = async (
+  filters: {
+    search?: string;
+    categoryId?: string | string[];
+    certification?: string | string[];
+    inStock?: string;
+    discount?: string;
+    review?: string;
+    arrival?: string;
+    minPrice?: string;
+    maxPrice?: string;
+    featured?: string;
+    createdById?: string;
+    productStatus?: string;
+    isAdmin?: string;
+    active?: string;
+    approval?: string;
+    getPopular?: string;
+    limitedStock?: string;
+    fromHomepage?: string;
+  } & Partial<Product>,
+  options: PaginationOptions,
+) => {
+  const {
+    limit: take,
+    skip,
+    page,
+    sortBy,
+    sortOrder,
+  } = calculatePagination(options);
+  const {
+    search,
+    categoryId,
+    certification,
+    review,
+    discount,
+    arrival,
+    minPrice,
+    maxPrice,
+    featured,
+    isAdmin,
+    active,
+    approval,
+    getPopular,
+    inStock,
+    limitedStock,
+    fromHomepage,
+    ...filterData
+  } = filters;
+
+  const variantSomeConditions: Prisma.ProductVariantWhereInput[] = [];
+  const conditions: Prisma.ProductWhereInput[] = [
+    {
+      varients: {
+        some: { AND: variantSomeConditions },
+      },
+      ...(isAdmin === "true" ? {} : { productStatus: "ACCEPTED" }),
+    },
+  ];
+
+  // partial match
+  if (search) {
+    // --- Run a lightweight Atlas Search aggregation that returns matching _id values only ---
+    // This is intentionally small / cheap: it only returns IDs and searchScore for ordering.
+    if (isValidObjectId(search)) {
+      conditions.push({ id: search });
+    } else {
+      const atlasPipeline = [
+        {
+          $search: {
+            index: ATLAS_SEARCH_INDEX,
+            compound: {
+              should: [
+                // strong: exact/phrase match on name
+                {
+                  phrase: {
+                    query: search,
+                    path: "name",
+                    score: { boost: { value: 8 } },
+                  },
+                },
+
+                // strong: fuzzy but require first char match (safer)
+                {
+                  text: {
+                    query: search,
+                    path: "name",
+                    fuzzy: { maxEdits: 1, prefixLength: 1, maxExpansions: 50 },
+                    score: { boost: { value: 5 } },
+                  },
+                },
+
+                // fallback: allow first-char substitution (low boost)
+                {
+                  text: {
+                    query: search,
+                    path: "name",
+                    fuzzy: { maxEdits: 1, prefixLength: 0, maxExpansions: 50 },
+                    score: { boost: { value: 1 } }, // low boost so it's only used when others fail
+                  },
+                },
+
+                // description fuzzy (lower boost)
+                {
+                  text: {
+                    query: search,
+                    path: "description",
+                    fuzzy: { maxEdits: 1, prefixLength: 1 },
+                    score: { boost: { value: 1 } },
+                  },
+                },
+              ],
+              minimumShouldMatch: 1,
+            },
+          },
+        },
+        { $set: { score: { $meta: "searchScore" } } },
+        { $project: { _id: 1, score: 1 } },
+        { $sort: { score: -1 } },
+      ];
+
+      const raw = (await prisma.$runCommandRaw({
+        aggregate: COLLECTION_NAME,
+        pipeline: atlasPipeline,
+        cursor: {},
+      })) as any;
+
+      const hits = raw?.cursor?.firstBatch ?? [];
+
+      // Convert ObjectId to string (Prisma ids usually are strings)
+      // _id: { '$oid': '68b9554f4f691aaafe0550f7' },
+      const hitIds = hits
+        .map((h: any) =>
+          h._id.$oid?.toString ? h._id.$oid.toString() : undefined,
+        )
+        .filter(Boolean) as string[];
+
+      // If no hits, short-circuit to avoid a heavier DB call later
+      if (hitIds.length === 0) {
+        return {
+          meta: { total: 0, page, limit: take },
+          data: [],
+        };
+      }
+
+      // Inject id-in filter so Prisma only fetches these candidates.
+      // This leaves all other Prisma logic (filters, includes, etc.) unchanged.
+      conditions.push({ id: { in: hitIds } });
+    }
+  }
+
+  if (limitedStock === "true") {
+    variantSomeConditions.push({
+      warehouseStocks: {
+        some: { productCount: { lte: env.app.lowStockThreshold, gt: 0 } },
+      },
+    });
+  }
+
+  if (categoryId) {
+    const categoryIds = Array.isArray(categoryId) ? categoryId : [categoryId];
+
+    variantSomeConditions.push({
+      variant: {
+        subCategory: { categoryId: { in: categoryIds } },
+      },
+    });
+  }
+  if (certification) {
+    const certifications = Array.isArray(certification)
+      ? certification
+      : [certification];
+
+    conditions.push({
+      certifications: { hasSome: certifications as Certification[] },
+    });
+  }
+  if (inStock === "true") {
+    variantSomeConditions.push({
+      warehouseStocks: { some: { productCount: { gt: 0 } } },
+    });
+  } else if (inStock === "false") {
+    variantSomeConditions.push({
+      warehouseStocks: { some: { productCount: { lte: 0 } } },
+    });
+  }
+  if (review && Number(review)) {
+    conditions.push({
+      reviews: { some: { rating: { gte: Number(review) } } },
+    });
+  }
+  if (discount && Number(discount) > 0) {
+    variantSomeConditions.push({
+      discountPercentage: { gte: Number(discount) },
+    });
+  }
+  if (arrival && Number(arrival) > 0) {
+    const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+    const startDate = new Date(
+      new Date().getTime() - Number(arrival) * 24 * 60 * 60 * 1000,
+    );
+    startDate.setHours(0, 0, 0, 0);
+
+    conditions.push({
+      createdAt: {
+        gte: startDate,
+        lte: endDate,
+      },
+    });
+  }
+  if (
+    minPrice !== undefined &&
+    Number(minPrice) !== undefined &&
+    maxPrice !== undefined &&
+    Number(maxPrice) !== undefined
+  ) {
+    variantSomeConditions.push({
+      prices: {
+        some: {
+          discountedPrice: {
+            gte: Number(minPrice),
+            lte: Number(maxPrice),
+          },
+          active: true,
+        },
+      },
+    });
+  }
+  if (featured) {
+    conditions.push({ featured: featured === "true" });
+  }
+
+  if (active) {
+    if (active === "true") conditions.push({ active: true });
+    else if (active === "false") conditions.push({ active: false });
+  }
+
+  if (!isAdmin || isAdmin === "false") {
+    conditions.push({ active: true });
+  }
+
+  if (approval) {
+    if (approval === "true") {
+      conditions.push({
+        productStatus: {
+          in: ["PENDING", "REJECTED"], // both statuses
+        },
+      });
+    } else {
+      conditions.push({
+        productStatus: {
+          in: ["ACCEPTED"], // both statuses
+        },
+      });
+    }
+  }
+
+  // exact match
+  if (Object.keys(filterData).length > 0) {
+    conditions.push({
+      AND: Object.keys(filterData).map((key) => ({
+        [key]: {
+          equals: filterData[key as keyof typeof filterData],
+        },
+      })),
+    });
+  }
+
+  const whereConditions = conditions.length ? { AND: conditions } : {};
+
+  const [result, total] = await Promise.all([
+    await prisma.product.findMany({
+      where: whereConditions,
+      orderBy:
+        getPopular === "true"
+          ? [{ orderCount: "desc" }, { visitCount: "desc" }]
+          : { [sortBy]: sortOrder },
+      include: {
+        hsn: true,
+        brand: true,
+        varients: {
+          where: { active: true },
+          select: {
+            id: true,
+            weightInGrams: true,
+            pricePerGram: true,
+            active: true,
+            warehouseStocks: { where: { productCount: { gt: 0 } } },
+            discountPercentage: true,
+            mfgDate: true,
+            expiryDate: true,
+            variant: {
+              select: {
+                id: true,
+                name: true,
+                subCategory: {
+                  select: {
+                    id: true,
+                    name: true,
+                    category: { select: { id: true, name: true } },
+                  },
+                },
+              },
+            },
+            prices: { orderBy: { createdAt: "desc" }, take: 1 },
+          },
+        },
+        combos: {
+          where: { active: true },
+          select: {
+            id: true,
+            weightInGrams: true,
+            name: true,
+            description: true,
+            imageUrl: true,
+            warehouseStocks: { where: { comboCount: { gt: 0 } } },
+            items: {
+              select: {
+                quantity: true,
+                productVariant: {
+                  select: {
+                    variant: { select: { name: true, description: true } },
+                  },
+                },
+              },
+            },
+            prices: { orderBy: { createdAt: "desc" }, take: 1 },
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            companyOwnerName: true,
+            contactPersonName: true,
+            businessName: true,
+          },
+        },
+      },
+      skip,
+      take,
+    }),
+    await prisma.product.count({ where: whereConditions }),
+  ]);
+
+  if (limitedStock === "true" && fromHomepage === "true" && result.length < 6) {
+    const fillerCount = 6 - result.length;
+    const fillerProducts = await prisma.product.findMany({
+      take: fillerCount,
+      include: {
+        hsn: true,
+        brand: true,
+        varients: {
+          where: { active: true },
+          select: {
+            id: true,
+            pricePerGram: true,
+            weightInGrams: true,
+            active: true,
+            warehouseStocks: { where: { productCount: { gt: 0 } } },
+            discountPercentage: true,
+            mfgDate: true,
+            expiryDate: true,
+            variant: {
+              select: {
+                id: true,
+                name: true,
+                subCategory: {
+                  select: {
+                    id: true,
+                    name: true,
+                    category: { select: { id: true, name: true } },
+                  },
+                },
+              },
+            },
+            prices: { orderBy: { createdAt: "desc" }, take: 1 },
+          },
+        },
+        combos: {
+          where: { active: true },
+          select: {
+            id: true,
+            name: true,
+            weightInGrams: true,
+            description: true,
+            imageUrl: true,
+            warehouseStocks: { where: { comboCount: { gt: 0 } } },
+            items: {
+              select: {
+                quantity: true,
+                productVariant: {
+                  select: {
+                    variant: { select: { name: true, description: true } },
+                  },
+                },
+              },
+            },
+            prices: { orderBy: { createdAt: "desc" }, take: 1 },
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            companyOwnerName: true,
+            contactPersonName: true,
+            businessName: true,
+          },
+        },
+      },
+    });
+    result.push(...fillerProducts);
+  }
+
+  return {
+    meta: { total, page, limit: take },
+    data: result.map((p) => ({
+      ...p,
+      varients: p.varients.map((v) => ({
+        ...v,
+        inStock: !!v.warehouseStocks.length,
+        totalStock: v.warehouseStocks.reduce(
+          (acc, ws) => acc + (ws.productCount || 0),
+          0,
+        ),
+      })),
+      combos: p.combos.map((c) => ({
+        ...c,
+        inStock: !!c.warehouseStocks.length,
+        totalStock: c.warehouseStocks.reduce(
+          (acc, ws) => acc + (ws.comboCount || 0),
+          0,
+        ),
+      })),
+    })),
+  };
+};
+
+const updateProduct = async (id: string, data: Partial<Product>) => {
+  const updatedProduct = await prisma.product.update({
+    where: { id },
+    data,
+    include: { brand: true, hsn: true, createdBy: true },
+  });
+
+  if (data.productStatus === "ACCEPTED" && updatedProduct.createdBy) {
+    await prisma.notification.create({
+      data: {
+        type: "PRODUCT_ACCEPTED",
+        title: `Product ${updatedProduct.name} uploaded successfully.`,
+        receiverId: updatedProduct.createdBy.userId,
+        productId: updatedProduct.id,
+      },
+    });
+    const io = getIO();
+    io.to(updatedProduct.createdBy.userId).emit("notification", {
+      id: updatedProduct.id,
+    });
+  }
+  if (data.productStatus === "REJECTED" && updatedProduct.createdBy) {
+    await prisma.notification.create({
+      data: {
+        type: "PRODUCT_REJECTED",
+        title: `Product ${updatedProduct.name} rejected: ${updatedProduct.rejectionReason}.`,
+        receiverId: updatedProduct.createdBy.userId,
+        productId: updatedProduct.id,
+      },
+    });
+    const io = getIO();
+    io.to(updatedProduct.createdBy.userId).emit("notification", {
+      id: updatedProduct.id,
+    });
+
+    await sendMail(
+      updatedProduct.createdBy.email,
+      `Product Rejected – ${updatedProduct.name}`,
+      `Hi ${updatedProduct.createdBy.contactPersonName},<br>Your product <strong>${updatedProduct.name}</strong> was rejected due to: <em>${updatedProduct.rejectionReason}</em>.<br>👉 <a href="https://yourwebsite.com/update-product/${updatedProduct.id}">Update Product</a> - Product Review Team`,
+    );
+  }
+
+  return updatedProduct;
+};
+
+const deleteProduct = async (id: string) => {
+  return prisma.product.delete({ where: { id } });
+};
+
+const createProductVariant = async (
+  payload: Prisma.ProductVariantUncheckedCreateWithoutProductInput & {
+    productId: string;
+    price: number;
+  },
+) => {
+  const { price, ...data } = payload;
+
+  // return prisma.productVariant.upsert({
+  //   where: {
+  //     productId_variantId: {
+  //       productId: payload.productId,
+  //       variantId: payload.variantId,
+  //     },
+  //   },
+  //   update: {
+  //     ...data,
+  //     active: true,
+  //     prices: {
+  //       updateMany: {
+  //         where: { active: true },
+  //         data: { active: false },
+  //       },
+  //       create: { price },
+  //     },
+  //   },
+  //   create: {
+  //     ...data,
+  //     prices: { create: { price } },
+  //   },
+  // });
+  return prisma.$transaction(async (tx) => {
+    // Step 1: upsert variant + price
+    const variant = await tx.productVariant.upsert({
+      where: {
+        productId_variantId: {
+          productId: payload.productId,
+          variantId: payload.variantId,
+        },
+      },
+      update: {
+        ...data,
+        active: true,
+        prices: {
+          updateMany: {
+            where: { active: true },
+            data: { active: false },
+          },
+          create: { price },
+        },
+      },
+      create: {
+        ...data,
+        prices: { create: { price } },
+      },
+      include: { prices: true, warehouseStocks: true },
+    });
+
+    return variant;
+  });
+};
+
+const updateProductVariant = async (
+  productId: string,
+  vairantId: string,
+  payload: Partial<ProductVariant> & {
+    price?: number;
+  },
+) => {
+  const productVariant = await prisma.productVariant.findUnique({
+    where: { productId_variantId: { productId, variantId: vairantId } },
+  });
+  if (!productVariant)
+    throw new ApiError(httpStatus.NOT_FOUND, "Variant not found");
+  else
+    return prisma.$transaction(async (tx) => {
+      const { price, ...data } = payload;
+      // ------------------- Price update -------------------
+      if (price) {
+        await tx.price.updateMany({
+          where: {
+            productVariantId: productVariant.id,
+            active: true,
+          },
+          data: { active: false },
+        });
+        await tx.price.create({
+          data: { productVariantId: productVariant.id, price },
+        });
+      }
+
+      // ------------------- Variant update -------------------
+      if (payload.discountPercentage) {
+        const prices = await tx.price.findMany({
+          where: { productVariantId: productVariant.id, active: true },
+        });
+
+        await Promise.all(
+          prices.map((p) =>
+            tx.price.update({
+              where: { id: p.id },
+              data: {
+                discountedPrice:
+                  p.price * (1 - payload.discountPercentage! / 100),
+              },
+            }),
+          ),
+        );
+      }
+
+      return tx.productVariant.update({
+        where: { productId_variantId: { productId, variantId: vairantId } },
+        data,
+        include: {
+          prices: true, // include all prices (you could filter active if needed)
+          warehouseStocks: true, // include stock per warehouse
+        },
+      });
+    });
+};
+
+const deleteProductVariant = async (productId: string, variantId: string) => {
+  const existingVariants = await prisma.productVariant.findMany({
+    where: { productId, active: true },
+  });
+  const productVariant = await prisma.productVariant.findUnique({
+    where: { productId_variantId: { productId, variantId } },
+    include: { wishilisted: true, cartItems: true },
+  });
+  if (productVariant?.wishilisted.length || productVariant?.cartItems.length)
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Cannot delete variant that is in wishlist or cart",
+    );
+
+  if (existingVariants!.length <= 1) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Cannot delete the last variant of a product",
+    );
+  } else
+    // Delete variant + related warehouse stocks in a transaction
+    return prisma.$transaction(async (tx) => {
+      await tx.warehouseStock.deleteMany({
+        where: { productVariantId: productVariant!.id },
+      });
+
+      return tx.productVariant.delete({
+        where: { productId_variantId: { productId, variantId } },
+      });
+    });
+};
+
+const createProductCombo = (
+  data: ProductCombo & {
+    items: {
+      quantity: number;
+      productVariantId: string;
+    }[];
+    price: number;
+  },
+) => {
+  return prisma.$transaction(async (tx) => {
+    const { items, price, ...productCombo } = data;
+
+    const productComboData = await tx.productCombo.create({
+      data: productCombo,
+    });
+
+    await tx.comboItem.createMany({
+      data: items.map((item) => ({
+        productComboId: productComboData.id,
+        ...item,
+      })),
+    });
+
+    await tx.price.create({
+      data: {
+        price,
+        productComboId: productComboData.id,
+        productVariantId: items[0].productVariantId,
+      },
+    });
+
+    return tx.productCombo.findUnique({
+      where: { id: productComboData.id },
+      include: { items: true, prices: true },
+    });
+  });
+};
+
+const updateProductCombo = (
+  id: string,
+  data: Partial<ProductCombo> & {
+    items?: {
+      quantity: number;
+      productVariantId: string;
+    }[];
+    price?: number;
+  },
+) => {
+  const { items, price, ...productCombo } = data;
+  return prisma.$transaction(async (tx) => {
+    const productComboData = await tx.productCombo.update({
+      where: { id },
+      data: productCombo,
+      include: { items: true },
+    });
+
+    if (items) {
+      await tx.comboItem.deleteMany({
+        where: { productComboId: productComboData.id },
+      });
+
+      await tx.comboItem.createMany({
+        data: items!.map((item) => ({
+          productComboId: productComboData.id,
+          ...item,
+        })),
+      });
+    }
+
+    if (price) {
+      await tx.price.updateMany({
+        where: { productComboId: productComboData.id },
+        data: { active: false },
+      });
+      await tx.price.create({
+        data: {
+          price,
+          productComboId: productComboData.id,
+          productVariantId: data.items
+            ? data.items[0].productVariantId
+            : productComboData.items[0].id,
+        },
+      });
+    }
+    return tx.productCombo.findUnique({
+      where: { id: productComboData.id },
+      include: { items: true, prices: { where: { active: true } } },
+    });
+  });
+};
+
+const deleteProductCombo = (id: string) => {
+  return prisma.productCombo.update({ where: { id }, data: { active: false } });
+};
+
+const updateProductStatus = (id: string, status: boolean) => {
+  return prisma.product.update({
+    where: {
+      id,
+    },
+    data: {
+      active: status,
+    },
+  });
+};
+
+/**
+ * Product dashboard related service functions
+ */
+const getProductStats = async (period: Period = "Monthly") => {
+  const { start, end, prevStart, prevEnd } = getPeriodRange(period);
+
+  // current totals (restricted to current period)
+  const [totalProducts, totalCategories, totalBrands] = await Promise.all([
+    prisma.product.count({ where: { createdAt: { gte: start, lte: end } } }),
+    prisma.category.count({ where: { createdAt: { gte: start, lte: end } } }),
+    prisma.brand.count({ where: { createdAt: { gte: start, lte: end } } }),
+  ]);
+
+  // previous period totals
+  const [prevProducts, prevCategories, prevBrands] = await Promise.all([
+    prisma.product.count({
+      where: { createdAt: { gte: prevStart, lte: prevEnd } },
+    }),
+    prisma.category.count({
+      where: { createdAt: { gte: prevStart, lte: prevEnd } },
+    }),
+    prisma.brand.count({
+      where: { createdAt: { gte: prevStart, lte: prevEnd } },
+    }),
+  ]);
+
+  // percentage change (signed). Return null when prev === 0 to indicate "no previous"
+  const pctChange = (curr: number, prev: number) => {
+    if (prev === 0) {
+      return prev === 0 && curr > 0 ? null : 0;
+      // note: returning `null` for prev===0 and curr>0 allows frontend to show "New".
+      // If you prefer numeric 100 for that case, return curr > 0 ? 100 : 0;
+    }
+    return ((curr - prev) / prev) * 100;
+  };
+
+  return {
+    totalProducts,
+    totalCategories,
+    totalBrands,
+    percentages: {
+      products: pctChange(totalProducts, prevProducts),
+      categories: pctChange(totalCategories, prevCategories),
+      brands: pctChange(totalBrands, prevBrands),
+    },
+    period,
+    periodRange: { start: start.toISOString(), end: end.toISOString() },
+    previousPeriodRange: {
+      start: prevStart.toISOString(),
+      end: prevEnd.toISOString(),
+    },
+  };
+};
+
+/**
+ * Top categories by revenue (labels + values)
+ */
+const getTopCategories = async (limit = 5, period: Period = "Weekly") => {
+  const { start, end } = getPeriodRange(period);
+
+  const items = await prisma.orderItem.findMany({
+    where: {
+      order: {
+        createdAt: { gte: start, lte: end },
+        status: "PAID",
+      },
+      price: { productVariantId: { not: null } },
+    },
+    select: {
+      quantity: true,
+      price: {
+        select: {
+          price: true,
+          productVariant: {
+            select: {
+              variant: {
+                select: {
+                  subCategory: {
+                    select: {
+                      category: {
+                        select: {
+                          id: true,
+                          name: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const revenueByCategory = new Map<
+    string,
+    { categoryId: string; name: string; revenue: number }
+  >();
+
+  for (const it of items) {
+    const unitPrice = Number(it.price?.price ?? 0);
+    const qty = Number(it.quantity ?? 0);
+    const category = it.price?.productVariant?.variant?.subCategory?.category;
+    const catId = category?.id ?? "unknown";
+    const revenue = unitPrice * qty;
+
+    const existing = revenueByCategory.get(catId);
+    if (existing) existing.revenue += revenue;
+    else
+      revenueByCategory.set(catId, {
+        categoryId: catId,
+        name: category?.name ?? "Other",
+        revenue,
+      });
+  }
+
+  const arr = Array.from(revenueByCategory.values()).sort(
+    (a, b) => b.revenue - a.revenue,
+  );
+  const top = arr.slice(0, limit);
+
+  return {
+    labels: top.map((t) => t.name),
+    values: top.map((t) => t.revenue),
+    raw: top,
+  };
+};
+
+/**
+ * Top products by revenue
+ */
+const getTopProducts = async (limit = 5, period: Period = "Weekly") => {
+  const { start, end } = getPeriodRange(period);
+
+  const items = await prisma.orderItem.findMany({
+    where: {
+      order: {
+        createdAt: { gte: start, lte: end },
+        status: "PAID",
+      },
+      // price may refer to a product variant or combo; handle variant-based first
+      price: { productVariantId: { not: null } },
+    },
+    include: {
+      price: {
+        select: {
+          price: true,
+          productVariant: {
+            select: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  thumbnailImageUrl: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // aggregate by product id
+  const revenueByProduct = new Map<
+    string,
+    {
+      productId: string;
+      productName?: string | null;
+      revenue: number;
+      thumbnail?: string | null;
+    }
+  >();
+
+  for (const it of items) {
+    const unitPrice = Number(it.price?.price ?? 0);
+    const qty = Number(it.quantity ?? 0);
+    const product = it.price?.productVariant?.product;
+    const pid = product?.id ?? "unknown";
+    const revenue = unitPrice * qty;
+
+    const existing = revenueByProduct.get(pid);
+    if (existing) existing.revenue += revenue;
+    else
+      revenueByProduct.set(pid, {
+        productId: pid,
+        productName: product?.name ?? null,
+        revenue,
+        thumbnail: product?.thumbnailImageUrl ?? null,
+      });
+  }
+
+  const arr = Array.from(revenueByProduct.values()).sort(
+    (a, b) => b.revenue - a.revenue,
+  );
+  const top = arr.slice(0, limit);
+
+  return {
+    labels: top.map((t) => t.productName ?? "Unknown"),
+    values: top.map((t) => t.revenue),
+    raw: top,
+  };
+};
+
+/**
+ * Low-stock products:
+ * totalStock = sum of all WarehouseStock.productCount for variants belonging to product
+ *            + sum of all WarehouseComboStock.comboCount for combos belonging to product
+ *
+ * threshold default: 10
+ */
+const getLowStockProducts = async (threshold = 10) => {
+  // 1) fetch all warehouse stocks with productVariant -> productId
+  const variantStocks = await prisma.warehouseStock.findMany({
+    select: {
+      productCount: true,
+      productVariant: { select: { productId: true } },
+    },
+  });
+
+  const productVariantAgg = new Map<string, number>();
+  for (const s of variantStocks) {
+    const pid = s.productVariant?.productId;
+    if (!pid) continue;
+    productVariantAgg.set(
+      pid,
+      (productVariantAgg.get(pid) ?? 0) + (s.productCount ?? 0),
+    );
+  }
+
+  // 2) fetch all warehouse combo stocks with productCombo -> productId
+  const comboStocks = await prisma.warehouseComboStock.findMany({
+    select: {
+      comboCount: true,
+      productCombo: { select: { productId: true } },
+    },
+  });
+
+  const productComboAgg = new Map<string, number>();
+  for (const s of comboStocks) {
+    const pid = s.productCombo?.productId;
+    if (!pid) continue;
+    productComboAgg.set(
+      pid,
+      (productComboAgg.get(pid) ?? 0) + (s.comboCount ?? 0),
+    );
+  }
+
+  // 3) combine maps into product -> totalStock
+  const combined = new Map<string, number>();
+  for (const [pid, v] of productVariantAgg)
+    combined.set(pid, (combined.get(pid) ?? 0) + v);
+  for (const [pid, v] of productComboAgg)
+    combined.set(pid, (combined.get(pid) ?? 0) + v);
+
+  // 4) filter < threshold
+  const lowProductIds = Array.from(combined.entries())
+    .filter(([, total]) => total < threshold)
+    .map(([pid]) => pid);
+
+  // 5) get product details
+  const products = lowProductIds.length
+    ? await prisma.product.findMany({
+        where: { id: { in: lowProductIds } },
+        select: { id: true, name: true, thumbnailImageUrl: true },
+      })
+    : [];
+
+  // build final list
+  const result = products.map((p) => ({
+    productId: p.id,
+    name: p.name,
+    thumbnail: p.thumbnailImageUrl ?? null,
+    totalStock: combined.get(p.id) ?? 0,
+    threshold,
+  }));
+
+  // optionally sort by smallest stock first
+  result.sort((a, b) => a.totalStock - b.totalStock);
+
+  return {
+    count: result.length,
+    items: result,
+  };
+};
+
+const getSearchSuggestions = async (search: string) => {
+  const atlasPipeline = [
+    {
+      $search: {
+        index: ATLAS_SEARCH_INDEX,
+        compound: {
+          should: [
+            {
+              phrase: {
+                query: search,
+                path: "name",
+                score: { boost: { value: 8 } },
+              },
+            },
+            {
+              text: {
+                query: search,
+                path: "name",
+                fuzzy: { maxEdits: 1, prefixLength: 1, maxExpansions: 50 },
+                score: { boost: { value: 5 } },
+              },
+            },
+            {
+              text: {
+                query: search,
+                path: "name",
+                fuzzy: { maxEdits: 1, prefixLength: 0, maxExpansions: 50 },
+                score: { boost: { value: 1 } },
+              },
+            },
+            {
+              text: {
+                query: search,
+                path: "description",
+                fuzzy: { maxEdits: 1, prefixLength: 1 },
+                score: { boost: { value: 1 } },
+              },
+            },
+          ],
+          minimumShouldMatch: 1,
+        },
+      },
+    },
+
+    // keep the search score
+    { $set: { score: { $meta: "searchScore" } } },
+
+    // lookup the first ProductVariant for this product, then follow variant -> subCategory -> categoryId
+    {
+      $lookup: {
+        from: "ProductVariant", // collection that stores ProductVariant documents
+        let: { productId: "$_id" },
+        pipeline: [
+          { $match: { $expr: { $eq: ["$productId", "$$productId"] } } },
+          { $limit: 1 }, // first variant only
+          // join the Variant doc
+          {
+            $lookup: {
+              from: "Variant",
+              localField: "variantId",
+              foreignField: "_id",
+              as: "variantDoc",
+            },
+          },
+          {
+            $unwind: { path: "$variantDoc", preserveNullAndEmptyArrays: true },
+          },
+          // join the SubCategory doc
+          {
+            $lookup: {
+              from: "SubCategory",
+              localField: "variantDoc.subCategoryId",
+              foreignField: "_id",
+              as: "subCat",
+            },
+          },
+          { $unwind: { path: "$subCat", preserveNullAndEmptyArrays: true } },
+          // project the categoryId only (could be null if any step missing)
+          { $project: { _id: 0, categoryId: "$subCat.categoryId" } },
+        ],
+        as: "firstVariantCategory",
+      },
+    },
+
+    // take the categoryId out of the single-element array (or be null)
+    {
+      $set: {
+        categoryId: { $arrayElemAt: ["$firstVariantCategory.categoryId", 0] },
+      },
+    },
+
+    // final projection / sorting
+    { $project: { _id: 1, name: 1, score: 1, categoryId: 1 } },
+    { $sort: { score: -1 } },
+    { $limit: 5 },
+  ];
+
+  const raw = (await prisma.$runCommandRaw({
+    aggregate: COLLECTION_NAME,
+    pipeline: atlasPipeline,
+    cursor: {},
+  })) as any;
+
+  const hits = raw?.cursor?.firstBatch ?? [];
+
+  return hits.map((h) => ({
+    id: h._id.$oid.toString(),
+    name: h.name,
+    categoryId: h.categoryId.$oid,
+  }));
+};
+
+const productService = {
+  createProduct,
+  createManyProducts,
+  getProductById,
+  getPaginatedProducts,
+
+  updateProduct,
+  updateProductStatus,
+  deleteProduct,
+
+  // Product Variants
+  deleteProductVariant,
+  updateProductVariant,
+  createProductVariant,
+
+  // Product Combo
+  createProductCombo,
+  updateProductCombo,
+  deleteProductCombo,
+
+  // stats
+  getProductStats,
+  getLowStockProducts,
+  getTopProducts,
+  getTopCategories,
+
+  getSearchSuggestions,
+};
+export default productService;

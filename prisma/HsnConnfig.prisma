@@ -1,0 +1,20 @@
+// As an Admin,
+// Acceptance Criteria:
+// A backend table named hsn_master exists with columns: hsn_code, description, gst_rate as per design UI
+// Only users with Admin role can add, edit, or delete entries in the HSN Master Table.
+// Vendors can view applicable HSN codes and GST rates but cannot make any changes.
+// Any updates to GST rates via this table are reflected across product GST calculations, invoices, and checkout automatically.
+// The system validates product HSN codes against this table during product creation or update.
+
+model HsnConfig {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  hsnCode     String  @unique
+  description String?
+  gstRate     Int
+  active      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  Product Product[]
+}

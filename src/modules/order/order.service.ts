@@ -1,0 +1,1117 @@
+import env from "@/config/env";
+import prisma from "@/config/prisma";
+import razorpayInstance from "@/config/razorpay";
+import {
+  Order,
+  PaymentType,
+  Prisma,
+  Shipment,
+  Warehouse,
+} from "@/generated/prisma";
+import ensureOrderFulfillableBySingleWarehouse from "@/services/shipway/eligibility";
+import enqueuePushOrder from "@/services/shipway/queueWorker";
+import shipwayService from "@/services/shipway/shipway.service";
+import { sendMail } from "@/services/transporter.service";
+import ApiError from "@/utils/ApiError";
+import calculatePagination, { PaginationOptions } from "@/utils/pagination";
+import { status as httpStatus } from "http-status";
+import { Orders } from "razorpay/dist/types/orders";
+import { z } from "zod";
+import { getIO } from "@/config/socket";
+import sendSms from "@/utils/sendSms";
+import message91Templates from "@/config/message91Templates";
+import orderTemplate from "./order.template";
+
+const calculateCart = async (
+  customerProfileId: string,
+  couponCode?: string,
+) => {
+  // Fetch the users cart, if no cart found: return default values
+  const cart = await prisma.cartItem.findMany({
+    where: { customerProfileId },
+    include: {
+      productVariant: {
+        include: {
+          warehouseStocks: true,
+          product: { include: { hsn: true } },
+          variant: {
+            select: {
+              name: true,
+              subCategory: { select: { categoryId: true } },
+            },
+          },
+          prices: {
+            where: { active: true },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+      },
+      productCombo: {
+        include: {
+          warehouseStocks: true,
+          product: {
+            include: {
+              hsn: true,
+              varients: {
+                take: 1,
+                select: {
+                  variant: {
+                    select: { subCategory: { select: { categoryId: true } } },
+                  },
+                },
+              },
+            },
+          },
+          prices: {
+            where: { active: true },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+  // Calculate subtotal (including discounted prices provided at product level)
+  const subTotal = cart.reduce((acc, curr) => {
+    const productVariantPrice = curr.productVariant?.prices[0].price
+      ? curr.productVariant.prices[0].price -
+        (curr.productVariant.prices[0].price *
+          (curr.productVariant.discountPercentage ?? 0)) /
+          100
+      : 0;
+    const productVariantQuantity = curr.quantity ?? 0;
+
+    const productComboPrice = curr.productCombo?.prices[0].price ?? 0;
+    const productComboQuantity = curr.quantity ?? 0;
+
+    return (
+      acc +
+      productVariantPrice * productVariantQuantity +
+      productComboPrice * productComboQuantity
+    );
+  }, 0);
+  // Calculate shipping cost
+  let shippingCost = 0;
+  let isFirstOrder = false;
+  const companyInfo = await prisma.companyInfo.findFirst();
+  if (companyInfo) {
+    const firstOrder = await prisma.order.findFirst({
+      where: { createdById: customerProfileId },
+    });
+
+    if (companyInfo.firstOrderFreeShipping && !firstOrder) {
+      // Rule 1 & 4: First order always free, regardless of subtotal
+      shippingCost = 0;
+      isFirstOrder = true;
+    } else if (
+      subTotal <= companyInfo.shippingCostThreshold ||
+      !companyInfo.thresholdActive
+    ) {
+      // Rule 2: Below threshold → charge standard
+      shippingCost = companyInfo.standardShippingCost;
+    } else {
+      // Rule 3: Above threshold → free
+      shippingCost = 0;
+    }
+  }
+
+  if (!cart.length)
+    return {
+      items: cart.length,
+      subTotal: 0,
+      gst: 0,
+      couponDiscount: 0,
+      grandTotal: 0,
+      applyCoupon: false,
+      coupon: undefined,
+      cart,
+      shippingCost: 0,
+      isFirstOrder,
+    };
+
+  // Calcualte GST based on the products HSN config
+  const gst = cart.reduce((acc, curr) => {
+    const productVariantGst = curr.productVariant?.product.hsn?.gstRate ?? 0;
+    const productComboGst = curr.productCombo?.product.hsn?.gstRate ?? 0;
+
+    const productVariantPrice = curr.productVariant?.prices[0].price
+      ? curr.productVariant.prices[0].price -
+        (curr.productVariant.prices[0].price *
+          (curr.productVariant.discountPercentage ?? 0)) /
+          100
+      : 0;
+    const productVariantQuantity = curr.quantity ?? 0;
+
+    const productComboPrice = curr.productCombo?.prices[0].price ?? 0;
+    const productComboQuantity = curr.quantity ?? 0;
+
+    return (
+      acc +
+      productVariantPrice * (productVariantGst / 100) * productVariantQuantity +
+      productComboPrice * (productComboGst / 100) * productComboQuantity
+    );
+  }, 0);
+
+  // Fetch coupon record from DB
+  const coupon = couponCode
+    ? await prisma.coupon.findUnique({
+        where: { code: couponCode, active: true },
+        include: {
+          usedIn: { select: { createdById: true } },
+          applicableFor: true,
+        },
+      })
+    : null;
+  if (couponCode && !coupon)
+    throw new ApiError(httpStatus.NOT_FOUND, "Coupon not found");
+  let applyCoupon = false;
+  let couponDiscount = 0;
+
+  if (coupon) {
+    // If the coupon has a usage limit and the limit is exhausted: throw error and exit
+    if (coupon.usageLimit !== null && coupon.usageLimit <= 0)
+      throw new ApiError(httpStatus.BAD_REQUEST, "Coupon limit exhausted");
+    // If the coupon is already used by the customer: throw error and exit
+    else if (coupon.usedIn.some((u) => u.createdById === customerProfileId))
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Coupon already used by the customer",
+      );
+    // If the coupon is category specific and the cart does not have any applicable category: throw error and exit
+    else if (coupon.applicableFor.length) {
+      // List of all unique categories present in the cart
+      const cartCategoryIds = [
+        ...new Set(
+          cart
+            .flatMap((item) => {
+              return [
+                item.productVariant?.variant.subCategory.categoryId,
+                item.productCombo?.product.varients[0]?.variant.subCategory
+                  .categoryId,
+              ];
+            })
+            .filter((i) => i !== undefined),
+        ),
+      ];
+      if (
+        !coupon.applicableFor.find((af) =>
+          cartCategoryIds.includes(af.categoryId),
+        )
+      )
+        throw new ApiError(
+          httpStatus.BAD_REQUEST,
+          "Coupon not applicable for the cart items",
+        );
+    }
+    // If the subtotal is less than the minimum order amount required for the coupon: throw error and exit
+    else if (coupon.minimumOrderAmount > subTotal)
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        `Cart subtotal must be at least ₹${coupon.minimumOrderAmount} to apply this coupon`,
+      );
+    // If the subtotal is more than the maximum order amount required for the coupon: throw error and exit
+    else if (coupon.maximumOrderAmount < subTotal)
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        `Cart subtotal must be less than ₹${coupon.maximumOrderAmount} to apply this coupon`,
+      );
+    // If the coupon is not valid for the current date: throw error and exit
+    else if (
+      new Date() < new Date(coupon.validFrom) ||
+      new Date() > new Date(coupon.validTo)
+    )
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Coupon is not valid for the current date",
+      );
+    // If everything is fine: apply the coupon
+    else applyCoupon = true;
+
+    if (applyCoupon) {
+      // Calculate coupon amount, for percentage, apply it on the subtotal
+      couponDiscount =
+        coupon.flatDiscount ?? subTotal * (coupon.percentageDiscount! / 100);
+
+      // If the coupon is category and percentage based, overwrite the coupon amount calculation based on only applicable items
+      if (coupon.applicableFor.length && !coupon.flatDiscount) {
+        const applicableItems = cart.filter((item) => {
+          const categoryId =
+            item.productVariant?.variant.subCategory.categoryId ??
+            item.productCombo?.product.varients[0]?.variant.subCategory
+              .categoryId ??
+            "";
+
+          return coupon.applicableFor.some(
+            (af) => af.categoryId === categoryId,
+          );
+        });
+
+        const applicableItemsSubTotal = applicableItems.reduce((acc, curr) => {
+          const productVariantPrice = curr.productVariant?.prices[0].price
+            ? curr.productVariant.prices[0].price -
+              (curr.productVariant.prices[0].price *
+                (curr.productVariant.discountPercentage ?? 0)) /
+                100
+            : 0;
+          const productVariantQuantity = curr.quantity ?? 0;
+
+          const productComboPrice = curr.productCombo?.prices[0].price ?? 0;
+          const productComboQuantity = curr.quantity ?? 0;
+
+          return (
+            acc +
+            productVariantPrice * productVariantQuantity +
+            productComboPrice * productComboQuantity
+          );
+        }, 0);
+
+        // Overwrite coupon discount calculation for percentage
+        couponDiscount =
+          applicableItemsSubTotal * (coupon.percentageDiscount! / 100);
+      }
+    }
+  }
+
+  // Apply maximum discount cap if present
+  couponDiscount = coupon?.maximumDiscountCap
+    ? Math.min(couponDiscount, coupon?.maximumDiscountCap)
+    : couponDiscount;
+
+  return {
+    items: cart.length,
+    subTotal,
+    gst,
+    couponDiscount: couponDiscount ?? 0,
+    grandTotal:
+      subTotal + Number(gst.toFixed(2)) - couponDiscount + shippingCost,
+    applyCoupon,
+    coupon,
+    cart,
+    shippingCost,
+    isFirstOrder,
+  };
+};
+
+const createOrder = async (
+  customerProfileId: string,
+  paymentType: PaymentType,
+  couponCode?: string,
+) => {
+  const cartBackup = [];
+  // Fetch profile and primary address
+  const customerProfile = await prisma.customerProfile.findUnique({
+    where: { id: customerProfileId },
+  });
+  if (!customerProfile)
+    throw new ApiError(httpStatus.NOT_FOUND, "Customer not found");
+  const address = await prisma.address.findFirst({
+    where: {
+      customerProfileId,
+      primary: true,
+    },
+  });
+  if (!address)
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "No primary address found for the customer",
+    );
+  // INFO: Beyond this point, we have a valid user and a valid address
+
+  // If COD: check if the address is serviceable
+  if (paymentType === "COD") {
+    const availableCurriers =
+      env.app.nodeEnv === "development"
+        ? ["A"]
+        : await shipwayService.getPincodeServiceable(address.zipcode, "C");
+
+    if (!availableCurriers.length)
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "COD not available for your default address",
+      );
+  }
+
+  // Fetch the cart and its associated values
+  const {
+    subTotal,
+    couponDiscount,
+    gst,
+    applyCoupon,
+    coupon,
+    cart,
+    shippingCost,
+  } = await calculateCart(customerProfileId, couponCode);
+  cartBackup.push(...cart);
+
+  // Check if any item in the cart is OOS
+  const outOfStock = cart.find((i) => {
+    let totalStock = 0;
+    if (i.productVariant)
+      totalStock = i.productVariant?.warehouseStocks.reduce(
+        (acc, curr) => acc + (curr.productCount ?? 0),
+        0,
+      );
+    else if (i.productCombo)
+      totalStock = i.productCombo?.warehouseStocks.reduce(
+        (acc, curr) => acc + (curr.comboCount ?? 0),
+        0,
+      );
+
+    return i.quantity > totalStock;
+  });
+  if (outOfStock) {
+    const itemType = outOfStock.productVariant
+      ? "productVariant"
+      : "productCombo";
+    const quantityInStock = outOfStock.productVariant
+      ? outOfStock.productVariant?.warehouseStocks.reduce(
+          (acc, curr) => acc + (curr.productCount ?? 0),
+          0,
+        )
+      : outOfStock.productCombo?.warehouseStocks.reduce(
+          (acc, curr) => acc + (curr.comboCount ?? 0),
+          0,
+        );
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `Only ${quantityInStock} units of ${outOfStock[itemType]?.product.name} - ${outOfStock.productVariant?.variant.name ?? outOfStock.productCombo?.name} is available in stock, but your cart has ${outOfStock.quantity} units`,
+    );
+  }
+
+  const finalAmount =
+    subTotal + Number(gst.toFixed(2)) - couponDiscount + shippingCost;
+  let amountTobePaid = finalAmount;
+
+  let rpOrder: Orders.RazorpayOrder | undefined;
+  if (paymentType === "ONLINE") {
+    if (customerProfile.wallet > 0) {
+      if (customerProfile.wallet >= finalAmount) {
+        // Wallet covers everything
+        amountTobePaid = 0;
+      } else {
+        // Partial wallet + gateway
+        amountTobePaid = finalAmount - customerProfile.wallet;
+      }
+    }
+
+    // Initiate Razorpay order only if amount to be paid is more than 0
+    if (amountTobePaid > 0) {
+      rpOrder = await razorpayInstance.orders.create({
+        amount: Math.ceil(amountTobePaid * 100),
+        currency: "INR",
+      });
+    }
+  }
+
+  // Crate the order
+  const order = await prisma.$transaction(
+    async (tx) => {
+      const newOrder = await tx.order.create({
+        data: {
+          createdById: customerProfileId,
+          razorpayOrderId: rpOrder ? rpOrder.id : null,
+          addressId: address.id,
+          // Save the coupon in a buffer for pending payments
+          tempCouponId: applyCoupon ? coupon?.id : null,
+          // For COD and fully wallet paid orders, save the coupon directly
+          couponId:
+            // eslint-disable-next-line no-nested-ternary
+            amountTobePaid === 0 || paymentType === "COD"
+              ? applyCoupon
+                ? coupon?.id
+                : null
+              : null,
+          subtotal: subTotal,
+          gst,
+          couponDiscount: couponDiscount ?? 0,
+          shippingCost,
+          paymentType,
+          status: paymentType === "COD" ? "INITIALIZED" : "PAID",
+        },
+        include: { createdBy: { include: { user: true } } },
+      });
+
+      if (!cart.length)
+        throw new ApiError(httpStatus.BAD_REQUEST, "Cart is empty");
+      await tx.orderItem.createMany({
+        data: cart.map((item) => {
+          const itemType = item.productVariant
+            ? "PRODUCT_VARIANT"
+            : "PRODUCT_COMBO";
+
+          // eslint-disable-line
+          return {
+            orderId: newOrder.id,
+            priceId:
+              itemType === "PRODUCT_VARIANT"
+                ? // eslint-disable-next-line @typescript-eslint/no-non-null-asserted-optional-chain
+                  item.productVariant?.prices[0].id!
+                : // eslint-disable-next-line @typescript-eslint/no-non-null-asserted-optional-chain
+                  item.productCombo?.prices[0].id!,
+            quantity: item.quantity,
+          };
+        }),
+      });
+
+      // Immediatly clear the cart and deduct from wallet if the order is COD or fully wallet paid
+      if (amountTobePaid === 0 || paymentType === "COD") {
+        const eligibility = await ensureOrderFulfillableBySingleWarehouse(
+          newOrder.id,
+          tx,
+        );
+        if (!eligibility.ok) {
+          // eslint-disable-next-line no-console
+          console.log("NOT ELIGIBLE : ", eligibility.message);
+          throw new ApiError(
+            httpStatus.BAD_REQUEST,
+            "Payment verified, but order cannot be fulfilled from a single warehouse",
+          );
+        }
+
+        await tx.cartItem.deleteMany({
+          where: { customerProfileId: newOrder.createdById },
+        });
+
+        const walletUsed =
+          customerProfile.wallet >= finalAmount
+            ? finalAmount
+            : customerProfile.wallet;
+        await tx.customerProfile.update({
+          where: { id: customerProfileId },
+          data: {
+            wallet: { decrement: walletUsed },
+            walletBufferForOnlinePayments: { decrement: walletUsed },
+          },
+        });
+        await tx.walletLogs.create({
+          data: {
+            customerProfileId,
+            amount: -walletUsed,
+            type: "DEBIT",
+            orderId: newOrder.id,
+          },
+        });
+      }
+
+      if (paymentType === "ONLINE" && customerProfile.wallet > 0) {
+        const walletUsed =
+          customerProfile.wallet >= finalAmount
+            ? finalAmount
+            : customerProfile.wallet;
+
+        // Save the wallet amount in a buffer, will be deducted upon payment success webhook
+        if (walletUsed > 0) {
+          await tx.customerProfile.update({
+            where: { id: customerProfileId },
+            data: { walletBufferForOnlinePayments: walletUsed },
+          });
+        }
+      }
+
+      const { id: _id, ...orderData } = newOrder;
+      return { ...orderData, mongoOrderId: newOrder.id };
+    },
+    { timeout: 10_000 },
+  );
+
+  if (paymentType === "COD" || amountTobePaid === 0) {
+    // // --- AFTER TX COMMIT: run pre-check for fulfillability
+
+    enqueuePushOrder(order.mongoOrderId).catch(async (err) => {
+      // eslint-disable-next-line
+      console.error("enqueuePushOrder failed (async)", err);
+    });
+  }
+
+  if (amountTobePaid === 0 || paymentType === "COD") {
+    // WARN: Secondary: Sending order confirmation email
+    const { data: safeEmail } = z
+      .string()
+      .email()
+      .safeParse(order.createdBy.user.email);
+    if (safeEmail)
+      await sendMail(
+        safeEmail,
+        `Order Confirmation - #${order.mongoOrderId}`,
+        orderTemplate.generateOrderConfirmationEmail(
+          { ...order, id: order.mongoOrderId },
+          // @ts-expect-error cart item price type mismatch
+          cart,
+          finalAmount,
+        ),
+      );
+    await sendSms(
+      message91Templates.orderConfirmation,
+      order.createdBy.user.phone,
+      {
+        Name: order.createdBy.user.name!,
+        Order_ID: order.mongoOrderId,
+        Amount: finalAmount.toString(),
+      },
+    );
+  } else if (paymentType === "ONLINE") {
+    await sendSms(
+      message91Templates.orderConfirmation,
+      order.createdBy.user.phone,
+      {
+        OrderID: order.mongoOrderId,
+      },
+    );
+  }
+
+  // WARN: Secondary operation: Increament order count for all products in the order
+  const productIds = cartBackup.map((item) => {
+    const itemType = item.productVariant ? "productVariant" : "productCombo";
+    return item[itemType]?.productId;
+  }) as string[];
+  await prisma.product.updateMany({
+    where: { id: { in: productIds } },
+    data: { orderCount: { increment: 1 } },
+  });
+
+  // WARN: Secondary: Notify all admins and order management employees about new order
+  const employeesToBeNotified = await prisma.user.findMany({
+    where: {
+      OR: [
+        { role: { isAdmin: true } },
+        {
+          role: {
+            permissions: {
+              some: {
+                resource: "ORDER_MANAGEMENT",
+                access: { hasSome: ["WRITE", "DELETE"] },
+              },
+            },
+          },
+        },
+      ],
+    },
+  });
+  await prisma.notification.createMany({
+    data: employeesToBeNotified.map((e) => ({
+      type: "ORDER_CREATED",
+      title: `New order #${order.mongoOrderId} placed by ${order.createdBy.user.name}`,
+      receiverId: e.id,
+      orderId: order.mongoOrderId,
+    })),
+  });
+  const io = getIO();
+  employeesToBeNotified.forEach((vh) => {
+    io.to(vh.id).emit("notification", {
+      id: order.mongoOrderId,
+    });
+  });
+
+  const vendorTobeNotified = await prisma.vendorProfile.findMany({
+    where: {
+      id: {
+        in: cartBackup
+          .map(
+            (i) =>
+              i.productVariant?.product.createdById ??
+              i.productCombo?.product.createdById,
+          )
+          .filter(Boolean) as string[],
+      },
+    },
+  });
+  await prisma.notification.createMany({
+    data: vendorTobeNotified.map((e) => ({
+      type: "ORDER_CREATED",
+      title: `New order ${order.mongoOrderId} received.`,
+      receiverId: e.userId,
+      orderId: order.mongoOrderId,
+    })),
+  });
+  vendorTobeNotified.forEach((vh) => {
+    io.to(vh.userId).emit("notification", {
+      id: order.mongoOrderId,
+    });
+  });
+
+  return rpOrder ?? order;
+};
+
+const getOrderById = async (id: string) => {
+  return prisma.order.findUnique({ where: { id } });
+};
+
+const getPaginatedOrders = async (
+  filters: {
+    search?: string;
+    vendorId?: string;
+    withRefund?: string;
+  } & Partial<Order>,
+  options: PaginationOptions,
+) => {
+  const {
+    limit: take,
+    skip,
+    page,
+    sortBy,
+    sortOrder,
+  } = calculatePagination(options);
+  const { search, vendorId, withRefund, ...filterData } = filters;
+
+  const conditions: Prisma.OrderWhereInput[] = [];
+
+  // filter for vendor orders
+  if (vendorId)
+    conditions.push({
+      items: {
+        some: {
+          price: {
+            OR: [
+              { productVariant: { product: { createdById: vendorId } } },
+              { productCombo: { product: { createdById: vendorId } } },
+            ],
+          },
+        },
+      },
+    });
+  if (withRefund === "true")
+    conditions.push({
+      items: {
+        some: {
+          refundRequest: {
+            status: {
+              in: ["PENDING", "APPROVED", "REFUNDED", "REJECTED"],
+            },
+          },
+        },
+      },
+    });
+
+  const isValidObjectId = (id: string): boolean => /^[0-9a-fA-F]{24}$/.test(id);
+
+  // partial match
+  if (search) {
+    if (isValidObjectId(search)) conditions.push({ id: { equals: search } });
+    else
+      conditions.push({
+        createdBy: {
+          user: { name: { contains: search, mode: "insensitive" } },
+        },
+      });
+  }
+  // exact match
+  if (Object.keys(filterData).length > 0) {
+    conditions.push({
+      AND: Object.keys(filterData).map((key) => ({
+        [key]: {
+          equals: filterData[key as keyof typeof filterData],
+        },
+      })),
+    });
+  }
+
+  const whereConditions = conditions.length ? { AND: conditions } : {};
+
+  const [result, total] = await Promise.all([
+    await prisma.order.findMany({
+      where: whereConditions,
+      orderBy: { [sortBy]: sortOrder },
+
+      include: {
+        coupon: true,
+        items: {
+          where: vendorId
+            ? {
+                price: {
+                  OR: [
+                    { productVariant: { product: { createdById: vendorId } } },
+                    { productCombo: { product: { createdById: vendorId } } },
+                  ],
+                },
+              }
+            : undefined,
+          include: {
+            price: {
+              include: {
+                productVariant: {
+                  include: {
+                    product: {
+                      include: {
+                        varients: {
+                          where: { active: true },
+                          take: 1,
+                          include: {
+                            variant: { include: { subCategory: true } },
+                          },
+                        },
+                        hsn: true,
+                      },
+                    },
+                    variant: { include: { subCategory: true } },
+                    prices: {
+                      where: { active: true },
+                      take: 1,
+                      orderBy: { createdAt: "desc" },
+                    },
+                  },
+                },
+                productCombo: {
+                  include: {
+                    product: {
+                      include: {
+                        hsn: true,
+                        varients: {
+                          where: { active: true },
+                          take: 1,
+                          include: {
+                            variant: { include: { subCategory: true } },
+                          },
+                        },
+                      },
+                    },
+                    prices: {
+                      where: { active: true },
+                      take: 1,
+                      orderBy: { createdAt: "desc" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        createdBy: {
+          include: {
+            user: true,
+          },
+        },
+        address: true,
+      },
+      skip,
+      take,
+    }),
+    await prisma.order.count({ where: whereConditions }),
+  ]);
+
+  const allOrderItemIds = result.flatMap((order) =>
+    order.items.map((item) => item.id),
+  );
+
+  const shipments = await prisma.shipment.findMany({
+    where: {
+      orderItemIds: {
+        hasSome: allOrderItemIds,
+      },
+    },
+    select: {
+      id: true,
+      orderItemIds: true,
+      status: true,
+    },
+  });
+
+  const shipmentMap: Record<string, typeof shipments> = {};
+
+  for (const sh of shipments) {
+    for (const itemId of sh.orderItemIds) {
+      if (!shipmentMap[itemId]) shipmentMap[itemId] = [];
+      shipmentMap[itemId].push(sh);
+    }
+  }
+
+  return {
+    meta: { total, page, limit: take },
+    data: result.map((order) => {
+      return {
+        ...order,
+        items: order.items.map((item) => {
+          const itemType = item.price.productVariant
+            ? "productVariant"
+            : "productCombo";
+          const shipmentsForItem = shipmentMap[item.id] ?? [];
+          // isDelivered only if all shipments of this item are DELIVERED
+          const isDelivered =
+            shipmentsForItem.length > 0 &&
+            shipmentsForItem.every((sh) => sh.status === "DELIVERED");
+
+          return {
+            orderItemId: item.id,
+            isDelivered,
+            itemType,
+            quantity: item.quantity,
+            coupon: order.coupon,
+            createdBy: order.createdBy,
+            address: order.address,
+            productId: item.price[itemType]?.product.id,
+            categoryId:
+              item.price[itemType]?.product.varients[0]?.variant.subCategory
+                .categoryId,
+            productName: item.price[itemType]?.product.name,
+            productThumbnailUrl:
+              item.price[itemType]?.product.thumbnailImageUrl,
+            variantName: item.price.productVariant?.variant.name,
+            comboName: item.price.productCombo?.name,
+            price:
+              item.price.price -
+              (item.price.price *
+                (item.price.productVariant?.discountPercentage ?? 0)) /
+                100,
+            hsn: item.price[itemType]?.product.hsn,
+          };
+        }),
+      };
+    }),
+  };
+};
+
+const updateOrder = async (id: string, data: Partial<Order>) => {
+  return prisma.order.update({ where: { id }, data });
+};
+
+const deleteOrder = async (id: string) => {
+  return prisma.order.delete({ where: { id } });
+};
+
+const reorder = async (id: string) => {
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      items: {
+        include: {
+          price: {
+            include: {
+              productCombo: {
+                include: {
+                  prices: {
+                    take: 1,
+                    orderBy: { createdAt: "desc" },
+                    where: { active: true },
+                  },
+                },
+              },
+              productVariant: {
+                include: {
+                  prices: {
+                    take: 1,
+                    orderBy: { createdAt: "desc" },
+                    where: { active: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!order) throw new ApiError(httpStatus.NOT_FOUND, "Order not found");
+
+  const { items } = order;
+
+  return prisma.$transaction(async (tx) => {
+    await tx.cartItem.deleteMany({
+      where: { customerProfileId: order.createdById },
+    });
+
+    return tx.cartItem.createMany({
+      data: items.map((i) => ({
+        customerProfileId: order.createdById,
+        productVariantId: i.price.productVariantId ?? undefined,
+        productComboId: i.price.productComboId ?? undefined,
+        quantity: i.quantity,
+      })),
+    });
+  });
+};
+
+const getOrderSummary = async (
+  customerProfileId: string,
+  couponCode?: string,
+) => {
+  return calculateCart(customerProfileId, couponCode);
+};
+
+const getInvoice = async (orderId: string) => {
+  // warehouse name, location
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    // invoice No, Invoice Date, Order ID, Payment ID, order status
+    // transaction id, payment time, payment date, mode of payment cod/online
+    include: {
+      // customer name, full delivery address, city, state
+      createdBy: { include: { user: true } },
+      address: true,
+      coupon: true,
+
+      items: {
+        include: {
+          price: {
+            include: {
+              //   vendor name, business name, vendor addresses, vendor state, city, location, PAN No, GSTRegistration No
+              // product name hsn code, quantity, unit price, net amount, gst, total with tax, subtotal (without tax), total gst, overall total
+              productVariant: {
+                include: {
+                  variant: true,
+                  product: { include: { createdBy: true, hsn: true } },
+                },
+              },
+              productCombo: {
+                include: {
+                  product: { include: { createdBy: true, hsn: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const oriringoVendor = await prisma.vendorProfile.findFirst({
+    where: { isOriginO: true },
+  });
+
+  const allShipments = await Promise.all(
+    order!.items.map((i) =>
+      prisma.shipment.findMany({
+        where: { orderItemIds: { has: i.id }, isReturn: false },
+        include: { warehouse: true },
+      }),
+    ),
+  );
+
+  console.log("OrderItems: ", order?.items);
+  console.log("Shipments: ", allShipments);
+
+  const output = order?.items.reduce(
+    (acc, curr, index) => {
+      const itemType = curr.price.productVariant
+        ? "productVariant"
+        : "productCombo";
+      const discountedPrice =
+        curr.price.productVariant?.discountPercentage ?? 0;
+      const basePrice = curr.price.price;
+      const unitPrice = basePrice - basePrice * (discountedPrice / 100);
+      const key = curr.price[itemType]?.product.createdById ?? "origino";
+      const product = curr.price[itemType]?.product;
+
+      const shipments: (Partial<Shipment> & {
+        warehouse: Partial<Warehouse> | null;
+      })[] = allShipments[index];
+      if (!shipments.length) {
+        shipments.push({
+          warehouse: { state: "Unknown" },
+          allocations: [{ orderItemId: curr.id, qty: curr.quantity }],
+        });
+      }
+
+      if (acc[key]) {
+        acc[key].items.push(
+          ...shipments.map((s) => {
+            return {
+              id: curr.id,
+              productName: curr.price[itemType]?.product.name,
+              itemName:
+                itemType === "productVariant"
+                  ? curr.price.productVariant?.variant.name
+                  : curr.price.productCombo?.name,
+              hsnCode: curr.price[itemType]?.product.hsn?.hsnCode,
+              gstRate: curr.price[itemType]?.product.hsn?.gstRate,
+              quantity: curr.quantity,
+              unitPrice,
+              netAmount: unitPrice * curr.quantity,
+              warehouseState: s.warehouse?.state,
+              type:
+                order.address.state === s.warehouse?.state
+                  ? "INTRASTATE"
+                  : "INTERSTATE",
+              // @ts-expect-error prisma json are untyped
+              allocations: s.allocations.filter(
+                // @ts-expect-error prisma json are untyped
+                (a) => a.orderItemId === curr.id,
+              ),
+            };
+          }),
+        );
+        return acc;
+      }
+
+      acc[key] = {
+        customer: {
+          name: order.createdBy.user.name,
+          address: order.address,
+        },
+        order: {
+          id: order.id,
+          status: order.status,
+          paymentType: order.paymentType,
+          razorpayOrderId: order.razorpayOrderId,
+          razorpayPaymentId: order.razorpayPaymentId,
+          subtotal: order.subtotal,
+          gst: order.gst,
+          couponDiscount: order.couponDiscount,
+          createdAt: order.createdAt,
+        },
+        appliedCoupon: order.coupon?.code,
+        items: [
+          ...shipments.map((s) => {
+            return {
+              id: curr.id,
+              productName: curr.price[itemType]?.product.name,
+              itemName:
+                itemType === "productVariant"
+                  ? curr.price.productVariant?.variant.name
+                  : curr.price.productCombo?.name,
+              hsnCode: curr.price[itemType]?.product.hsn?.hsnCode,
+              gstRate: curr.price[itemType]?.product.hsn?.gstRate,
+              quantity: curr.quantity,
+              unitPrice,
+              netAmount: unitPrice * curr.quantity,
+              warehouseState: s.warehouse?.state,
+              type:
+                order.address.state === s.warehouse?.state
+                  ? "INTRASTATE"
+                  : "INTERSTATE",
+              // @ts-expect-error prisma json are untyped
+              allocations: s.allocations.filter(
+                // @ts-expect-error prisma json are untyped
+                (a) => a.orderItemId === curr.id,
+              ),
+            };
+          }),
+        ],
+      };
+
+      if (product?.createdBy)
+        acc[key].vendor = {
+          name: product.createdBy.businessName,
+          address: product.createdBy.companyAddress,
+          pan: product.createdBy.panNumber,
+          gst: product.createdBy.gstNumber,
+        };
+      else
+        acc[key].vendor = {
+          name: oriringoVendor?.businessName,
+          address: oriringoVendor?.companyAddress,
+          pan: oriringoVendor?.panNumber,
+          gst: oriringoVendor?.gstNumber,
+        };
+
+      return acc;
+    },
+    {} as Record<string, any>,
+  );
+
+  // await HAS an effect
+  return Object.values(output ?? {});
+};
+
+const orderService = {
+  createOrder,
+  getOrderById,
+  getPaginatedOrders,
+  updateOrder,
+  deleteOrder,
+  reorder,
+  getOrderSummary,
+  getInvoice,
+  calculateCart,
+};
+export default orderService;

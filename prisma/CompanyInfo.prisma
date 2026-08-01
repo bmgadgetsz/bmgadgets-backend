@@ -1,0 +1,8 @@
+model CompanyInfo {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  standardShippingCost   Float   @default(0)
+  shippingCostThreshold  Float   @default(0)
+  thresholdActive        Boolean @default(false)
+  firstOrderFreeShipping Boolean @default(false)
+}

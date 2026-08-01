@@ -1,0 +1,61 @@
+enum Access {
+  READ
+  WRITE
+  DELETE
+}
+
+enum Resource {
+  DASHBOARD
+  PAYMENT_DASHBOARD
+  LOGISTICS_DASHBOARD
+  CATEGORY_MANAGEMENT
+  BRAND_MANAGEMENT
+  PRODUCT_MANAGEMENT
+  PRODUCT_DASHBOARD
+  COMBO_MANAGEMENT
+  HSN_AND_GST
+  COUPON_MANAGEMENT
+  BANNERS
+  FEATURED_PRODUCTS
+  USER_MANAGEMENT
+  USER_DASHBOARD
+  ORDER_MANAGEMENT
+  REVIEW_MANAGEMENT
+  ONBOARD_MANAGEMENT
+  VENDOR_MANAGEMENT
+  VENDOR_DASHBOARD
+  INVENTORY_MANAGEMENT
+  PRODUCT_APPROVAL
+  PAYOUT_MANAGEMENT
+  STATEMENT_GENERATOR
+  FAILED_TRANSACTIONS
+  AUDIT_LOGS
+  CONFIGURATION
+  ORDERS_AND_SHIPMENTS
+  WAREHOUSE
+  REFUND_AND_RETURNS
+  RBAC_MODULE
+  TICKET_MODULE
+}
+
+type Permission {
+  resource Resource
+  access   Access[]
+}
+
+model Role {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  name        String       @unique
+  description String
+  isCustomer  Boolean      @default(false)
+  //Vendor bool
+  isVendor    Boolean      @default(false)
+  isAdmin     Boolean      @default(false)
+  active      Boolean      @default(true)
+  permissions Permission[]
+
+  users User[]
+
+  createdAt DateTime @default(now())
+}

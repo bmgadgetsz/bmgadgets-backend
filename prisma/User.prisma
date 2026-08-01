@@ -1,0 +1,38 @@
+model User {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  name  String?
+  email String  @unique // placeholder of phone by default
+  phone String  @unique
+
+  otp               String?
+  otpExpiresAt      DateTime?
+  failedOtpAttempts Int       @default(0)
+  lockedUntil       DateTime?
+
+  active Boolean @default(true)
+
+  roleId String @db.ObjectId
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  customerProfile CustomerProfile?
+  vendorProfile   VendorProfile?
+  sessions        Session[]
+  notifications   Notification[]
+
+  createdAt       DateTime        @default(now())
+  Review          Review[]
+  tickets         Ticket[]        @relation("TicketCreatedBy")
+  ticketsModified Ticket[]        @relation("TicketLastModifiedBy")
+  ticketComments  TicketComment[] @relation("TicketCommentCreatedBy")
+}
+
+model Session {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  sessionId String   @unique
+  userId    String   @db.ObjectId
+  expiresAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

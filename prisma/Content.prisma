@@ -1,0 +1,200 @@
+type CustomImage {
+  url     String
+  href    String?
+  altText String
+}
+
+type Feature {
+  graphicUrl String
+  text       String
+  subText    String
+}
+
+type Text {
+  text    String
+  subText String
+}
+
+model Content {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  bannerCarousel  BannerCarousel[] // each one is a collection, only one can be active at a time
+  featuredBanners FeaturedBanner[] // each one is a collection, only one can be active at a time
+  whoWeServe      WhoWeServe[] // each one is a collection, only one can be active at a time
+  customerCtas    CustomerCta[] // each one is one single image, only one can be active at a time
+  whyChooseUs     WhyChooseUs[] // each one is a collection, only one can be active at a time
+  limitedStock    LimitedStock[] // each one is a collection, only one can be active at a time
+  certifications  CertificationFeature[] // each one is a single image, at max 5 can be active at a time
+  poweredBy       PoweredBy[] // each one is a single image, at max 6 can be active at a time
+  vendorCtas      VendorCta[] // each one is one single image, only one can be active at a time
+  sellOrigin      SellOrigin[]
+  facility        Facility[]
+}
+
+model BannerCarousel {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title  String
+  active Boolean       @default(true)
+  media  CustomImage[]
+
+  contentId String  @db.ObjectId
+  content   Content @relation(fields: [contentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FeaturedBanner {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title  String
+  active Boolean @default(true)
+
+  squareCarousel     CustomImage[]
+  horizontalCarousel CustomImage[]
+  staticImage1       CustomImage
+  staticImage2       CustomImage
+
+  contentId String  @db.ObjectId
+  content   Content @relation(fields: [contentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WhoWeServe {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title  String
+  active Boolean @default(true)
+
+  features Feature[]
+
+  contentId String  @db.ObjectId
+  content   Content @relation(fields: [contentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CustomerCta {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title  String
+  active Boolean @default(true)
+
+  media Feature
+
+  contentId String  @db.ObjectId
+  content   Content @relation(fields: [contentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WhyChooseUs {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title  String
+  active Boolean @default(true)
+
+  heading     Text?
+  staticImage CustomImage
+  cards       Feature[]
+
+  contentId String  @db.ObjectId
+  content   Content @relation(fields: [contentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LimitedStock {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title  String
+  active Boolean       @default(true)
+  media  CustomImage[]
+
+  contentId String  @db.ObjectId
+  content   Content @relation(fields: [contentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CertificationFeature {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title  String
+  active Boolean @default(true)
+
+  media CustomImage
+
+  contentId String  @db.ObjectId
+  content   Content @relation(fields: [contentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PoweredBy {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title  String
+  active Boolean @default(true)
+
+  media CustomImage
+
+  contentId String  @db.ObjectId
+  content   Content @relation(fields: [contentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VendorCta {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title  String
+  active Boolean @default(true)
+
+  media CustomImage
+
+  contentId String  @db.ObjectId
+  content   Content @relation(fields: [contentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SellOrigin {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title  String
+  active Boolean     @default(true)
+  media  CustomImage
+
+  contentId String  @db.ObjectId
+  content   Content @relation(fields: [contentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Facility {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  media       CustomImage
+  title       String
+  description String
+
+  contentId String  @db.ObjectId
+  content   Content @relation(fields: [contentId], references: [id])
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}

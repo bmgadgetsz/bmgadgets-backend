@@ -1,0 +1,52 @@
+// Acceptance Criteria:
+// Super Admin can create discount coupons with the following custom rules:
+// Discount type: Percentage or Flat
+// Usage limits: (e.g., per user, total usage)
+// Validity period: From Date to To Date
+// Applicability: Global (platform-wide) or limited to specific categories
+// Minimum Order Amount Validation: Coupon is only applied if the total cart amount is greater than or equal to the set minimum (e.g., ₹500).
+// Maximum Discount Cap (for percentage discounts): Even if the percentage calculation exceeds this cap, the discount cannot be higher than the set maximum amount (e.g., ₹2000).
+
+// Coupon Management:
+// Super Admin can edit any existing coupon and update its rules.
+// Super Admin can deactivate or delete any coupon at any time.
+
+// Coupon Code Logic:
+// Coupons should only apply when:
+// Cart total is greater than or equal to the Minimum Order Amount, and
+// For percentage discounts, discount amount does not exceed the set Maximum Discount Cap.
+
+model Coupon {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title              String             @default("")
+  description        String?
+  code               String             @unique
+  percentageDiscount Int? // null when flat discount is used
+  flatDiscount       Int? // null when percentage discount is used
+  usageLimit         Int? // null when all users gets one use
+  validFrom          DateTime
+  validTo            DateTime
+  applicableFor      CouponCategories[] // empty when global
+  minimumOrderAmount Int
+  maximumOrderAmount Int                @default(1)
+  maximumDiscountCap Int? // only applicable for percentage discounts
+  active             Boolean            @default(true)
+
+  usedInTemp Order[] @relation("OrderTempCoupon")
+  usedIn     Order[] @relation("OrderPermCoupon")
+
+  createdAt DateTime @default(now())
+}
+
+model CouponCategories {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  couponId   String @db.ObjectId
+  categoryId String @db.ObjectId
+
+  coupon   Coupon   @relation(fields: [couponId], references: [id])
+  category Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([couponId, categoryId])
+}
