@@ -26,10 +26,26 @@ import buildShipwayPayload from "./mapper";
 import allocateAndReserve, { Chunk } from "./shipmentAllocator";
 import shipwayService from "./shipway.service";
 
-const redisConnection = {
-  host: process.env.REDIS_HOST || "127.0.0.1",
-  port: Number(process.env.REDIS_PORT || 6379),
-};
+function parseRedisConnection() {
+  const url = process.env.REDIS_URL;
+  if (url) {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname,
+      port: Number(parsed.port) || 6379,
+      username: parsed.username || undefined,
+      password: parsed.password || undefined,
+      tls: url.startsWith("rediss://") ? {} : undefined,
+    };
+  }
+  return {
+    host: process.env.REDIS_HOST || "127.0.0.1",
+    port: Number(process.env.REDIS_PORT || 6379),
+  };
+}
+
+const redisConnection = parseRedisConnection();
+
 
 type PayloadItem = {
   orderItemId: string;
