@@ -19,7 +19,10 @@ reviewerRouter
   )
   .get(
     handleAuth(),
-    checkPermission(["REVIEW_MANAGEMENT"], "READ"),
+    checkPermission(["REVIEW_MANAGEMENT"], "READ", {
+      openForCustomers: true,
+      openForVendors: true,
+    }),
     reviewController.getPaginatedReviews,
   );
 

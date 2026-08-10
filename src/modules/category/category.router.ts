@@ -54,4 +54,11 @@ categoryRouter
     categoryController.deleteCategory,
   );
 
+categoryRouter.post(
+  "/:id/products",
+  handleAuth(),
+  checkPermission(["CATEGORY_MANAGEMENT"], "WRITE"),
+  categoryController.assignProductsToCategory,
+);
+
 export default categoryRouter;

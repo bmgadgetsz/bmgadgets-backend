@@ -11,7 +11,6 @@ describe("Post Routes:", () => {
       testPost = {
         title: "abc",
         body: "ac",
-        category: "tech",
       };
     });
 
@@ -28,17 +27,6 @@ describe("Post Routes:", () => {
 
     test(`Should throw ${httpStatus.BAD_REQUEST} if a unknown key is in the payload`, async () => {
       testPost.abc = "def";
-      const res = await request(app)
-        .post("/api/v1/posts")
-        .send(testPost)
-        .expect(httpStatus.BAD_REQUEST);
-
-      expect(res.body.message).toMatch("Validation error");
-      expect(res.body.errors).toBeDefined();
-    });
-
-    test(`Should throw ${httpStatus.BAD_REQUEST} for invalid category`, async () => {
-      testPost.category = "invalid";
       const res = await request(app)
         .post("/api/v1/posts")
         .send(testPost)

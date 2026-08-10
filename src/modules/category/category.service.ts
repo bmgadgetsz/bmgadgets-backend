@@ -1,6 +1,8 @@
 import prisma from "@/config/prisma";
 import { Category, Prisma } from "@/generated/prisma";
 import calculatePagination, { PaginationOptions } from "@/utils/pagination";
+import ApiError from "@/utils/ApiError";
+import { status as httpStatus } from "http-status";
 
 /**
  * Create a single category
@@ -132,6 +134,27 @@ const deleteCategory = async (id: string) => {
   return prisma.category.delete({ where: { id } });
 };
 
+const assignProductsToCategory = async (
+  categoryId: string,
+  productIds: string[],
+) => {
+  const category = await prisma.category.findUnique({
+    where: { id: categoryId },
+  });
+  if (!category) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Category not found");
+  }
+
+  await prisma.product.updateMany({
+    where: {
+      id: { in: productIds },
+    },
+    data: {
+      categoryId,
+    },
+  });
+};
+
 const categoryService = {
   createCategory,
   createManyCategories,
@@ -139,5 +162,6 @@ const categoryService = {
   getPaginatedCategories,
   updateCategory,
   deleteCategory,
+  assignProductsToCategory,
 };
 export default categoryService;

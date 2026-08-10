@@ -596,7 +596,7 @@ const ensureOrderFulfillableBySingleWarehouse = async (
       }
 
       // choose deterministic warehouseId for this multi allocation (warehouse that provided the first allocated piece)
-      let chosenWarehouseForComboMulti: string | undefined = undefined;
+      let chosenWarehouseForComboMulti: string | undefined;
       if (variantAllocations.length > 0) {
         chosenWarehouseForComboMulti = stockIdToWarehouseId.get(
           variantAllocations[0].warehouseStockId,

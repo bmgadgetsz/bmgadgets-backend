@@ -16,7 +16,7 @@ export interface WarehouseCreatePayload {
   pincode: string;
   latitude?: string;
   longitude?: string;
-  gstNo?: string;
+  gstNo: string;
   fssaiCode?: string;
   vendorId: string;
   shipwayWarehouseId?: string;

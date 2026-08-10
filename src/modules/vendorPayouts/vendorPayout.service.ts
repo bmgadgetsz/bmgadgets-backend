@@ -41,8 +41,8 @@ const calculateSinglePayoutNetPayout = (
     (sum, item) =>
       sum +
       item.orderItem.price.price *
-      item.orderItem.quantity *
-      (item.commission / 100),
+        item.orderItem.quantity *
+        (item.commission / 100),
     0,
   );
 
@@ -80,8 +80,8 @@ const calculateNetPayout = (
       (sum, item) =>
         sum +
         item.orderItem.price.price *
-        item.orderItem.quantity *
-        (item.commission / 100),
+          item.orderItem.quantity *
+          (item.commission / 100),
       0,
     );
 
@@ -474,11 +474,11 @@ export const getVendorPayoutSummary = async (opts: SummaryOpts) => {
     ...(status ? { status } : {}),
     ...(from || to
       ? {
-        AND: [
-          from ? { cycleStart: { gte: from } } : {},
-          to ? { cycleEnd: { lte: to } } : {},
-        ],
-      }
+          AND: [
+            from ? { cycleStart: { gte: from } } : {},
+            to ? { cycleEnd: { lte: to } } : {},
+          ],
+        }
       : {}),
   };
 
@@ -514,11 +514,11 @@ export const getVendorPayoutSummary = async (opts: SummaryOpts) => {
       status: "REFUNDED",
       ...(from || to
         ? {
-          AND: [
-            from ? { createdAt: { gte: from } } : {},
-            to ? { createdAt: { lte: to } } : {},
-          ],
-        }
+            AND: [
+              from ? { createdAt: { gte: from } } : {},
+              to ? { createdAt: { lte: to } } : {},
+            ],
+          }
         : {}),
     },
     include: {

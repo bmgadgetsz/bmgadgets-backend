@@ -2,6 +2,10 @@
  * CORS configuration for the application.
  * Specifies the allowed origins, headers, and credentials policy.
  */
+const extraOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim())
+  : [];
+
 const corsConfig = {
   origin: [
     "http://localhost:5173",
@@ -18,6 +22,7 @@ const corsConfig = {
     "https://main.d1qaf46koue5ec.amplifyapp.com",
     "https://main.d2fn4nzp62s4wl.amplifyapp.com",
     "https://main.d3fxpi71jac1s.amplifyapp.com",
+    ...extraOrigins,
   ],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,

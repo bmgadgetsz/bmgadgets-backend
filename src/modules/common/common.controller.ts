@@ -5,7 +5,7 @@ import { status as httpStatus } from "http-status";
 import { randomUUID } from "crypto";
 
 const uploadSingleFile = catchAsync(async (req, res) => {
-  const { directory } = req.body;
+  const directory = req.body?.directory || "general";
 
   if (!req.files) throw new ApiError(httpStatus.BAD_REQUEST, "No file found");
 
@@ -20,6 +20,7 @@ const uploadSingleFile = catchAsync(async (req, res) => {
       s3Service.upload(
         `bmq/${directory}/${file.originalname.split(" ").join("-").split(".").join(`-${randomUUID()}.`)}`,
         file!.buffer,
+        file.mimetype,
       ),
     ),
   );

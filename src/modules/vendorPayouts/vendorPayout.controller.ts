@@ -192,8 +192,8 @@ const razorpayPayout = catchAsync(async (req, res) => {
     (sum, item) =>
       sum +
       item.orderItem.price.price *
-      item.orderItem.quantity *
-      (item.commission / 100),
+        item.orderItem.quantity *
+        (item.commission / 100),
     0,
   );
 
@@ -236,7 +236,7 @@ const razorpayPayout = catchAsync(async (req, res) => {
       data: payout,
     });
   } catch (
-  err: any // eslint-disable-line @typescript-eslint/no-explicit-any
+    err: any // eslint-disable-line @typescript-eslint/no-explicit-any
   ) {
     if (err.response) {
       console.error("Razorpay error status:", err.response.status); // eslint-disable-line no-console

@@ -1,10 +1,10 @@
 import catchAsync from "@/utils/catchAsync";
 import { Request, Response } from "express";
 import { status as httpStatus } from "http-status";
-import warehouseStockService from "./warehouseStock.service";
 import pick from "@/utils/pick";
 import { PrismaClientKnownRequestError } from "@/generated/prisma/runtime/library";
 import ApiError from "@/utils/ApiError";
+import warehouseStockService from "./warehouseStock.service";
 
 const getPaginatedWarehouseVariantStock = catchAsync(
   async (req: Request, res: Response) => {
@@ -71,10 +71,22 @@ const deleteStock = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const upsertStock = catchAsync(async (req: Request, res: Response) => {
+  const data = req.body;
+  const updated = await warehouseStockService.upsertVariantStock(data);
+
+  res.status(httpStatus.OK).json({
+    success: true,
+    message: "Variant stock updated successfully",
+    data: updated,
+  });
+});
+
 const warehouseStockController = {
   // getStock,
   createStock,
   updateStock,
+  upsertStock,
   deleteStock,
   // adjustStock,
   getPaginatedWarehouseVariantStock,

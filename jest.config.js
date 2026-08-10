@@ -11,6 +11,7 @@ export default {
     ],
   },
   moduleNameMapper: {
+    "^@/(.*)\\.js$": "<rootDir>/src/$1",
     "^@/(.*)$": "<rootDir>/src/$1",
   },
   extensionsToTreatAsEsm: [".ts"],

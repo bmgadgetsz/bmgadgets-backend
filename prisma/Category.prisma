@@ -9,6 +9,7 @@ model Category {
 
   subCategories    SubCategory[]
   availableCoupons CouponCategories[]
+  products         Product[]
 
   createdAt DateTime  @default(now())
 }

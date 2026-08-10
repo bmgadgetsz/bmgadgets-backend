@@ -9,11 +9,23 @@ const createOrderSchema = z.object({
 });
 
 const updateOrderSchema = z.object({
-  body: z.strictObject({
-    name: z.string().optional(),
-    description: z.string().optional(),
-    imageUrl: z.string().url().optional(),
-    active: z.boolean().optional(),
+  body: z.object({
+    status: z
+      .enum([
+        "PENDING",
+        "INITIALIZED",
+        "CONFIRMED",
+        "SHIPPED",
+        "DELIVERED",
+        "PAID",
+        "CANCELLED",
+      ])
+      .optional(),
+    fulfillmentMode: z.enum(["MANUAL", "SHIPWAY"]).optional(),
+    deliveryPartner: z.string().optional(),
+    trackingId: z.string().optional(),
+    trackingUrl: z.string().optional(),
+    expectedDeliveryDate: z.string().optional(),
   }),
 });
 

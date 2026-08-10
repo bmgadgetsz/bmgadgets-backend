@@ -1,7 +1,7 @@
 import { configDotenv } from "dotenv";
 
 // Load environment variables from a .env file into process.env
-configDotenv({ override: true });
+configDotenv();
 /**
  * This file contains all the major envs used throughout this project
  */

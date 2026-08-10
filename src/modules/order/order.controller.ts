@@ -215,22 +215,30 @@ const getPaginatedOrders = catchAsync(async (req, res) => {
     "status",
     "withRefund",
     "createdById",
+    "paymentType",
   ]);
   const options = pick(req.query, ["sort_by", "sort_order", "limit", "page"]);
 
   const { currentUser } = res.locals;
-  if (currentUser.role.isCustomer) {
-    if (!currentUser.customerProfile?.id)
+  if (currentUser?.role?.isCustomer && !currentUser?.role?.isAdmin) {
+    if (!currentUser.customerProfile?.id) {
       res.status(httpStatus.OK).json({
         success: true,
         message: "Orders fetched successfully",
-        data: [],
+        data: { meta: { total: 0, page: 1, limit: 10 }, data: [] },
       });
+      return;
+    }
 
     filters.createdById = currentUser.customerProfile.id;
   }
-  if (currentUser.role.isVendor)
-    filters.vendorId = currentUser.vendorProfile.id;
+
+  // Only restrict by vendorId if user is a vendor and NOT an admin
+  if (currentUser?.role?.isVendor && !currentUser?.role?.isAdmin) {
+    if (currentUser.vendorProfile?.id) {
+      filters.vendorId = currentUser.vendorProfile.id;
+    }
+  }
 
   const response = await orderService.getPaginatedOrders(filters, options);
 

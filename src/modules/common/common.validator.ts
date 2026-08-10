@@ -1,9 +1,8 @@
 import { z } from "zod";
 
 const fileUpload = z.object({
-  body: z.strictObject({
-    file: z.any(),
-    directory: z.string(),
+  body: z.object({
+    directory: z.string().optional().default("general"),
   }),
 });
 

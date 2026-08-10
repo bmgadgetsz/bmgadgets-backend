@@ -18,26 +18,17 @@ import {
  * Handler to generate otp for login
  */
 const generateOtp = catchAsync(async (req, res) => {
-  // get phone, email and and app requestedFrom type like admin panel, frontend or vendor panel
-  const { phone, email, requestedFrom } = req.query;
+  const email = (req.query.email as string)?.trim().toLowerCase();
+  const requestedFrom = (req.query.requestedFrom as string) || "client";
 
-  // throw error if no valid email and phone
-  if (!phone && !email)
-    throw new ApiError(httpStatus.BAD_REQUEST, "Phone or email is required");
-  if (
-    (phone && typeof phone !== "string") ||
-    (email && typeof email !== "string")
-  )
-    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid phone or email format");
+  if (!email)
+    throw new ApiError(httpStatus.BAD_REQUEST, "Email address is required");
 
-  // find the user by email or phone
   let user = await prisma.user.findFirst({
-    where: {
-      OR: [{ email: email ?? undefined }, { phone: phone ?? undefined }],
-    },
+    where: { email: { equals: email, mode: "insensitive" } },
     include: { role: true },
   });
-  // throw error if user role and requestedFrom app type does not match
+
   if (user?.role.isAdmin && requestedFrom !== "admin")
     throw new ApiError(
       httpStatus.FORBIDDEN,
@@ -49,88 +40,77 @@ const generateOtp = catchAsync(async (req, res) => {
       "Please login from the vendor portal",
     );
 
-  // if phone exists and user does not then create a new user
-  if (phone) {
-    if (!user) {
+  if (!user) {
+    if (requestedFrom === "client") {
       const role = await prisma.role.findFirst({ where: { isCustomer: true } });
-      // role does not exists mean seed scripts was run which creates different type of roles
       if (!role)
         throw new ApiError(
           httpStatus.INTERNAL_SERVER_ERROR,
-          "The system is not configured properly. Please contact support.",
+          "Customer role is not configured. Please contact support.",
         );
 
       user = await prisma.user.create({
-        data: { phone, email: `PLACEHOLDER#${phone}`, roleId: role.id },
+        data: {
+          email,
+          phone: `+91${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+          name: email.split("@")[0],
+          roleId: role.id,
+        },
         include: { role: true },
       });
+    } else {
+      throw new ApiError(httpStatus.NOT_FOUND, "User account not found");
     }
-    // throw if user does not exist
-  } else if (!user) throw new ApiError(httpStatus.NOT_FOUND, "User not found");
-
-  // create random  otp between 10000 and 99999
-  const otp = `${Math.floor(10000 + Math.random() * 90000)}`;
-  // hash the otp
-  const hashedOtp = await hashPassword(otp);
-
-  // Send OTP
-  if (email) {
-    try {
-      // send email to user
-      await transporter.sendMail({
-        from: env.email.user,
-        to: email,
-        subject: "Your OTP Code",
-        text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
-      });
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error("[SMTP] Error sending OTP email:", error);
-    }
-    // if phone is provided then send an an sms
-  } else if (phone) {
-    if (env.app.nodeEnv !== "development")
-      await sendSms(message91Templates.sendOtp, phone, {
-        OTP: otp,
-        Duration: "5",
-      });
   }
 
-  // update the user record the hashedOtp and expiry time of otp
+  const otp = `${Math.floor(10000 + Math.random() * 90000)}`;
+  const hashedOtp = await hashPassword(otp);
+
+  try {
+    await transporter.sendMail({
+      from: env.email.user,
+      to: email,
+      subject: "Your BMGadgets Verification OTP Code",
+      text: `Your OTP verification code for BMGadgets is ${otp}. It will expire in 5 minutes.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 24px; color: #1e293b; max-width: 480px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px;">
+          <h2 style="color: #2563eb; font-weight: 800; margin-top: 0;">BMGadgets Login Code</h2>
+          <p style="font-size: 14px; color: #64748b;">Use the following 5-digit verification code to complete your login:</p>
+          <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-radius: 12px; font-size: 32px; font-weight: 900; letter-spacing: 8px; color: #0f172a; margin: 20px 0;">
+            ${otp}
+          </div>
+          <p style="font-size: 12px; color: #94a3b8;">This OTP code expires in 5 minutes. If you did not request this code, please ignore this email.</p>
+        </div>
+      `,
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("[SMTP] Error sending OTP email:", error);
+  }
+
   await prisma.user.update({
     where: { id: user.id },
     data: {
       otp: hashedOtp,
-      otpExpiresAt: new Date(Date.now() + 5 * 60 * 1000), // expires in 5 mins
+      otpExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
     },
   });
 
-  // send response to client
   res.status(httpStatus.OK).json({
     success: true,
-    message: "OTP generated successfully",
-    // Remove the truty override in production
-    data: env.app.nodeEnv === "development" || true ? { otp } : undefined,
+    message: "OTP sent to your email successfully",
+    data: env.app.nodeEnv === "development" ? { otp } : undefined,
   });
 });
 
-/**
- * Log the user in after checking the otp, role and the platform requestedFrom type
- */
 const login = catchAsync(async (req, res) => {
-  // get the email, otp, phone and platform requestedFrom
-  const { phone, email, otp, requestedFrom } = req.body;
+  const email = (req.body.email as string)?.trim().toLowerCase();
+  const { otp, requestedFrom } = req.body;
 
-  // throw if now email or phone
-  if (!phone && !email)
-    throw new ApiError(httpStatus.BAD_REQUEST, "Phone or email is required");
+  if (!email) throw new ApiError(httpStatus.BAD_REQUEST, "Email is required");
 
-  // get user based on either email or phone
-  const userWhereInput: Prisma.UserWhereUniqueInput = phone
-    ? { phone }
-    : { email };
-  const user = await checkOtp({ ...userWhereInput, active: true }, otp);
-  // throw if user role and platform requestedFrom does not match
+  const user = await checkOtp({ email, active: true }, otp);
+
   if (user.role.isCustomer && requestedFrom !== "client")
     throw new ApiError(
       httpStatus.FORBIDDEN,
@@ -181,6 +161,9 @@ const logout = catchAsync(async (_req, res) => {
 const getCurrentUser = catchAsync(async (_req, res) => {
   // get current user stored in locals during previous auth middleware step
   const { currentUser } = res.locals;
+  const cleanEmail = currentUser.email?.startsWith("PLACEHOLDER#")
+    ? ""
+    : currentUser.email;
 
   // send the response to client
   res.status(httpStatus.OK).json({
@@ -188,6 +171,7 @@ const getCurrentUser = catchAsync(async (_req, res) => {
     data: {
       ...{
         ...currentUser,
+        email: cleanEmail,
         gender: currentUser.customerProfile?.gender,
         age: currentUser.customerProfile?.age,
       },

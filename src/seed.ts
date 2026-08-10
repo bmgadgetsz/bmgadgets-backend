@@ -185,7 +185,7 @@ import prisma from "./config/prisma";
 
   // Seed BannerCarousel under the content
   const carouselExists = await prisma.bannerCarousel.findFirst({
-    where: { contentId: content.id }
+    where: { contentId: content.id },
   });
 
   if (!carouselExists) {
@@ -199,20 +199,20 @@ import prisma from "./config/prisma";
           {
             url: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=1200&q=80",
             altText: "Premium Noise Cancelling Headphones - 45% OFF",
-            href: "/products"
+            href: "/products",
           },
           {
             url: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1200&q=80",
             altText: "Minimalist Smartwatch Series - Stay Connected",
-            href: "/products"
+            href: "/products",
           },
           {
             url: "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80",
             altText: "Next-Gen Gaming Gear & Audio Setup",
-            href: "/products"
-          }
-        ]
-      }
+            href: "/products",
+          },
+        ],
+      },
     });
     console.log("[Database Seed] Banner Carousel sliders seeded successfully.");
   } else {
