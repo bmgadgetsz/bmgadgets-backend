@@ -15,6 +15,13 @@ warehouseStockRouter
     warehouseStockController.createStock,
   );
 
+warehouseStockRouter.post(
+  "/upsert",
+  handleAuth(),
+  validateRequest(warehouseStockValidator.upsertWarehouseStockSchema),
+  warehouseStockController.upsertStock,
+);
+
 warehouseStockRouter
   .route("/:id")
   .patch(

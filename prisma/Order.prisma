@@ -1,6 +1,9 @@
 enum OrderStatus {
   PENDING
   INITIALIZED
+  CONFIRMED
+  SHIPPED
+  DELIVERED
   PAID
   CANCELLED
 }
@@ -24,6 +27,15 @@ model Order {
   addressId   String          @db.ObjectId
   address     Address         @relation(fields: [addressId], references: [id], onDelete: Cascade)
   paymentType PaymentType     @default(ONLINE)
+
+  // Manual & Shipway Fulfillment Fields
+  fulfillmentMode      String    @default("MANUAL")
+  deliveryPartner      String?
+  trackingId           String?
+  trackingUrl          String?
+  expectedDeliveryDate DateTime?
+  shippedAt            DateTime?
+  deliveredAt          DateTime?
 
   items          OrderItem[]
   tempCouponId   String?     @db.ObjectId

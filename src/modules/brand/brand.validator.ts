@@ -5,7 +5,7 @@ const createBrandSchema = z.object({
   body: z.strictObject({
     name: z.string(),
     description: z.string().optional(),
-    imageUrl: z.string().url(),
+    imageUrl: z.string().url().optional(),
   }),
 });
 // zod schema for update brand api

@@ -130,28 +130,8 @@ const calculateCart = async (
       isFirstOrder,
     };
 
-  // Calcualte GST based on the products HSN config
-  const gst = cart.reduce((acc, curr) => {
-    const productVariantGst = curr.productVariant?.product.hsn?.gstRate ?? 0;
-    const productComboGst = curr.productCombo?.product.hsn?.gstRate ?? 0;
-
-    const productVariantPrice = curr.productVariant?.prices[0].price
-      ? curr.productVariant.prices[0].price -
-        (curr.productVariant.prices[0].price *
-          (curr.productVariant.discountPercentage ?? 0)) /
-          100
-      : 0;
-    const productVariantQuantity = curr.quantity ?? 0;
-
-    const productComboPrice = curr.productCombo?.prices[0].price ?? 0;
-    const productComboQuantity = curr.quantity ?? 0;
-
-    return (
-      acc +
-      productVariantPrice * (productVariantGst / 100) * productVariantQuantity +
-      productComboPrice * (productComboGst / 100) * productComboQuantity
-    );
-  }, 0);
+  // Prices posted are tax-inclusive (no extra GST added on top of item prices)
+  const gst = 0;
 
   // Fetch coupon record from DB
   const coupon = couponCode
@@ -283,8 +263,7 @@ const calculateCart = async (
     subTotal,
     gst,
     couponDiscount: couponDiscount ?? 0,
-    grandTotal:
-      subTotal + Number(gst.toFixed(2)) - couponDiscount + shippingCost,
+    grandTotal: subTotal - couponDiscount + shippingCost,
     applyCoupon,
     coupon,
     cart,
@@ -379,8 +358,7 @@ const createOrder = async (
     );
   }
 
-  const finalAmount =
-    subTotal + Number(gst.toFixed(2)) - couponDiscount + shippingCost;
+  const finalAmount = subTotal - couponDiscount + shippingCost;
   let amountTobePaid = finalAmount;
 
   let rpOrder: Orders.RazorpayOrder | undefined;
@@ -427,7 +405,10 @@ const createOrder = async (
           couponDiscount: couponDiscount ?? 0,
           shippingCost,
           paymentType,
-          status: paymentType === "COD" ? "INITIALIZED" : "PAID",
+          status:
+            amountTobePaid === 0 || paymentType === "COD"
+              ? "INITIALIZED"
+              : "PENDING",
         },
         include: { createdBy: { include: { user: true } } },
       });
@@ -510,7 +491,12 @@ const createOrder = async (
       }
 
       const { id: _id, ...orderData } = newOrder;
-      return { ...orderData, mongoOrderId: newOrder.id };
+      return {
+        ...orderData,
+        mongoOrderId: newOrder.id,
+        razorpayKeyId: env.razorpay.keyId,
+        amountTobePaid,
+      };
     },
     { timeout: 10_000 },
   );
@@ -634,7 +620,15 @@ const createOrder = async (
 };
 
 const getOrderById = async (id: string) => {
-  return prisma.order.findUnique({ where: { id } });
+  const isMongoId = /^[0-9a-fA-F]{24}$/.test(id);
+  if (!isMongoId || id.startsWith("order_")) {
+    return prisma.order.findFirst({ where: { razorpayOrderId: id } });
+  }
+  const order = await prisma.order.findUnique({ where: { id } });
+  if (!order) {
+    return prisma.order.findFirst({ where: { razorpayOrderId: id } });
+  }
+  return order;
 };
 
 const getPaginatedOrders = async (
@@ -860,8 +854,23 @@ const getPaginatedOrders = async (
   };
 };
 
-const updateOrder = async (id: string, data: Partial<Order>) => {
-  return prisma.order.update({ where: { id }, data });
+const updateOrder = async (id: string, data: any) => {
+  const updatePayload: any = { ...data };
+
+  if (
+    data.expectedDeliveryDate &&
+    typeof data.expectedDeliveryDate === "string"
+  ) {
+    updatePayload.expectedDeliveryDate = new Date(data.expectedDeliveryDate);
+  }
+  if (data.status === "SHIPPED" && !data.shippedAt) {
+    updatePayload.shippedAt = new Date();
+  }
+  if (data.status === "DELIVERED" && !data.deliveredAt) {
+    updatePayload.deliveredAt = new Date();
+  }
+
+  return prisma.order.update({ where: { id }, data: updatePayload });
 };
 
 const deleteOrder = async (id: string) => {
@@ -929,9 +938,14 @@ const getOrderSummary = async (
 
 const getInvoice = async (orderId: string) => {
   // warehouse name, location
+  const isMongoId = /^[0-9a-fA-F]{24}$/.test(orderId);
+  const whereClause: Prisma.OrderWhereInput =
+    !isMongoId || orderId.startsWith("order_")
+      ? { razorpayOrderId: orderId }
+      : { OR: [{ id: orderId }, { razorpayOrderId: orderId }] };
 
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
+  const order = await prisma.order.findFirst({
+    where: whereClause,
     // invoice No, Invoice Date, Order ID, Payment ID, order status
     // transaction id, payment time, payment date, mode of payment cod/online
     include: {

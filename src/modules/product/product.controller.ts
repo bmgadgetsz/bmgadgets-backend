@@ -8,6 +8,7 @@ import prisma from "@/config/prisma";
 import { Period } from "@/utils/vendorStats";
 import { getIO } from "@/config/socket";
 import redis from "@/config/redis";
+import { parseProductLink } from "@/utils/productLinkParser";
 import productService from "./product.service";
 
 const createProduct = catchAsync(async (req, res, next) => {
@@ -118,7 +119,7 @@ const getProductById = catchAsync(async (req, res) => {
 });
 
 const getPaginatedProducts = catchAsync(async (req, res) => {
-  const filters = pick(req.query, [
+  const filters: any = pick(req.query, [
     "search",
     "categoryId",
     "certification",
@@ -138,6 +139,13 @@ const getPaginatedProducts = catchAsync(async (req, res) => {
     "limitedStock",
     "fromHomepage",
   ]);
+
+  // Support query parameter aliases for price filters
+  const minPrice = req.query.minPrice || req.query.min_price || req.query.min;
+  const maxPrice = req.query.maxPrice || req.query.max_price || req.query.max;
+  if (minPrice) filters.minPrice = String(minPrice);
+  if (maxPrice) filters.maxPrice = String(maxPrice);
+
   const options = pick(req.query, ["sort_by", "sort_order", "limit", "page"]);
 
   const response = await productService.getPaginatedProducts(filters, options);
@@ -182,10 +190,12 @@ const updateProduct = catchAsync(async (req, res) => {
     // we will validate attempts to set active=true below.
   }
 
-  // If admin (or anyone) sets productStatus to ACCEPTED, product must remain inactive by default.
-  // Admin can later try to set `active = true` explicitly which will trigger stock validation below.
-  if (data?.productStatus === "ACCEPTED") {
-    data.active = false;
+  // If productStatus is set to ACCEPTED without specifying active status, keep current active state
+  if (
+    data?.productStatus === "ACCEPTED" &&
+    typeof data.active === "undefined"
+  ) {
+    // leave active untouched
   }
 
   // Helper: if the request is trying to set active=true, validate stock availability
@@ -505,6 +515,24 @@ const getSearchSuggestions = catchAsync(async (req, res) => {
   });
 });
 
+const parseProductLinkHandler = catchAsync(async (req, res) => {
+  const { url } = req.body;
+  if (!url || typeof url !== "string" || !url.startsWith("http")) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Please provide a valid product URL",
+    );
+  }
+
+  const productData = await parseProductLink(url);
+
+  res.status(httpStatus.OK).json({
+    success: true,
+    message: "Product details pre-filled successfully",
+    data: productData,
+  });
+});
+
 const productController = {
   createProduct,
   createManyProducts,
@@ -513,6 +541,7 @@ const productController = {
   updateProduct,
   deleteProduct,
   updateProductStatus,
+  parseProductLinkHandler,
 
   updateProductVariant,
   deleteProductVariant,

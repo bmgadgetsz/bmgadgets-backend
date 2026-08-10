@@ -39,8 +39,19 @@ const createReview = catchAsync(async (req, res) => {
       "You have not ordered this product",
     );
 
+  const imageUrls: string[] =
+    data.imageUrls || (data.imageUrl ? [data.imageUrl] : []);
+  if (imageUrls.length > 2) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Maximum 2 images allowed per review",
+    );
+  }
+
   const response = await reviewService.createReview({
     ...data,
+    imageUrl: imageUrls[0] || data.imageUrl || null,
+    imageUrls,
     createdById: customerProfileId,
   });
 
@@ -63,7 +74,7 @@ const getReviewById = catchAsync(async (req, res) => {
 });
 
 const getPaginatedReviews = catchAsync(async (req, res) => {
-  const filters = pick(req.query, ["search", "isAdmin", "active"]);
+  const filters = pick(req.query, ["search", "isAdmin", "active", "productId"]);
   const options = pick(req.query, ["sort_by", "sort_order", "limit", "page"]);
 
   const response = await reviewService.getPaginatedReviews(filters, options);

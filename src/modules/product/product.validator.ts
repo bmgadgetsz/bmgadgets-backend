@@ -51,6 +51,10 @@ const createProductSchema = z.object({
     createdById: z.string().optional(),
     productStatus: z.nativeEnum(ProductStatus).optional(),
     rejectionReason: z.string().optional(),
+    categoryId: z.string().min(1, "categoryId is required"),
+    featured: z.boolean().optional(),
+    isFlashDeal: z.boolean().optional(),
+    active: z.boolean().optional(),
 
     varients: z.array(variantSchema), // note: spelling should match your model
   }),
@@ -77,6 +81,10 @@ const createManyProducts = z.object({
       imageUrls: z.array(z.string().url()),
       videoUrl: z.string().url().optional(),
       attributes: z.array(z.string()),
+      categoryId: z.string().min(1, "categoryId is required"),
+      featured: z.boolean().optional(),
+      isFlashDeal: z.boolean().optional(),
+      active: z.boolean().optional(),
 
       varients: z.array(bulkVariantSchema), // note: spelling should match your model
     }),
@@ -107,8 +115,10 @@ const updateProductSchema = z.object({
     createdById: z.string().optional(),
     productStatus: z.nativeEnum(ProductStatus).optional(),
     rejectionReason: z.string().optional(),
+    categoryId: z.string().optional(),
 
     featured: z.boolean().optional(),
+    isFlashDeal: z.boolean().optional(),
     active: z.boolean().optional(),
   }),
 });

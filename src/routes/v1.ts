@@ -6,6 +6,11 @@ import brandRouter from "@/modules/brand/brand.router";
 import categoryRouter from "@/modules/category/category.router";
 import cmsRouter from "@/modules/cms/cms.router";
 import commonRouter from "@/modules/common/common.router";
+import upload from "@/config/multer";
+import handleAuth from "@/middleware/handleAuth";
+import validateRequest from "@/middleware/validateRequest";
+import commonValidator from "@/modules/common/common.validator";
+import commonController from "@/modules/common/common.controller";
 import couponRouter from "@/modules/coupon/coupon.router";
 import hsnConfigRouter from "@/modules/hsnConfig/hsnConfig.router";
 import orderRouter from "@/modules/order/order.router";
@@ -30,6 +35,7 @@ import shipmentRouter from "@/modules/shipment/shipment.router";
 import companyInfoRouter from "@/modules/compnayInfo/companyInfo.router";
 import notificationRouter from "@/modules/notification/notification.route";
 import ticketRouter from "@/modules/ticket/ticket.router";
+import postRouter from "@/modules/post/post.router";
 
 // Initialize the main router for version 1
 const v1Router = Router();
@@ -41,6 +47,7 @@ const routes = [
   { path: "/company-info", router: companyInfoRouter },
   { path: "/notifications", router: notificationRouter },
   { path: "/tickets", router: ticketRouter },
+  { path: "/posts", router: postRouter },
 
   { path: "/categories", router: categoryRouter },
   { path: "/sub-categories", router: subCategoryRouter },
@@ -54,10 +61,10 @@ const routes = [
   { path: "/rbac", router: roleRouter },
   { path: "/users", router: userRouter },
   { path: "/employees", router: employeeRouter },
-
   { path: "/orders", router: orderRouter },
   { path: "/coupons", router: couponRouter },
   { path: "/reviews", router: reviewerRouter },
+  { path: "/review", router: reviewerRouter },
 
   { path: "/vendors", router: vendorRouter },
   { path: "/vendor-payouts", router: vendorPayoutRouter },
@@ -75,5 +82,14 @@ const routes = [
 
 // Register each route with the main router
 routes.forEach((route) => v1Router.use(route.path, route.router));
+
+// Direct /file-upload endpoint mapping to support direct frontend uploads
+v1Router.post(
+  "/file-upload",
+  handleAuth(),
+  upload.array("file"),
+  validateRequest(commonValidator.fileUpload),
+  commonController.uploadSingleFile,
+);
 
 export default v1Router; // Export the main router

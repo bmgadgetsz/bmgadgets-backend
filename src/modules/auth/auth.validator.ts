@@ -3,8 +3,10 @@ import { z } from "zod";
 // Zod schema for generate otp api
 const generateOtpSchema = z.object({
   query: z.strictObject({
-    phone: z.string().trim().optional(),
-    email: z.string().trim().email().optional(),
+    email: z
+      .string()
+      .trim()
+      .email({ message: "Valid email address is required" }),
     requestedFrom: z.enum(["client", "admin", "vendor"]).default("client"),
   }),
 });
@@ -12,9 +14,11 @@ const generateOtpSchema = z.object({
 // zod schema for login api
 const loginSchema = z.object({
   body: z.strictObject({
-    phone: z.string().trim().optional(),
-    email: z.string().trim().email().optional(),
-    otp: z.string().length(5),
+    email: z
+      .string()
+      .trim()
+      .email({ message: "Valid email address is required" }),
+    otp: z.string().length(5, { message: "OTP must be exactly 5 digits" }),
     requestedFrom: z.enum(["client", "admin", "vendor"]).default("client"),
   }),
 });

@@ -11,6 +11,12 @@ productRouter.get("/stats", productController.getProductStatsHandler);
 productRouter.get("/top-categories", productController.getTopCategoriesHandler);
 productRouter.get("/top-products", productController.getTopProductsHandler);
 productRouter.get("/low-stock", productController.getLowStockHandler);
+productRouter.post(
+  "/parse-link",
+  handleAuth(),
+  checkPermission(["PRODUCT_MANAGEMENT"], "WRITE", { openForVendors: true }),
+  productController.parseProductLinkHandler,
+);
 
 productRouter
   .route("/")

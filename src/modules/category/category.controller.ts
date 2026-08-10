@@ -172,6 +172,18 @@ const deleteCategory = catchAsync(async (req, res) => {
   });
 });
 
+const assignProductsToCategory = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const { productIds } = req.body;
+
+  await categoryService.assignProductsToCategory(id, productIds);
+
+  res.status(httpStatus.OK).json({
+    success: true,
+    message: "Products assigned to category successfully",
+  });
+});
+
 const categoryController = {
   createCategory,
   createManyCategory,
@@ -179,5 +191,6 @@ const categoryController = {
   getPaginatedCategories,
   updateCategory,
   deleteCategory,
+  assignProductsToCategory,
 };
 export default categoryController;

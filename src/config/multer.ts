@@ -1,32 +1,12 @@
-import { Request } from "express";
-import multer, { FileFilterCallback } from "multer";
+import multer from "multer";
 
 // Configure multer to use memory storage
 const storage = multer.memoryStorage();
 
-// File filter to allow only images, videos, and PDFs
-const fileFilter = (
-  _req: Request,
-  file: Express.Multer.File,
-  cb: FileFilterCallback,
-) => {
-  const mimeType = file.mimetype.split("/")[0];
-
-  if (
-    ["image", "video"].includes(mimeType) ||
-    file.mimetype === "application/pdf"
-  ) {
-    cb(null, true);
-  } else {
-    cb(null, false);
-  }
-};
-
-// Multer configuration with file size limit of 10 MB
+// Multer configuration with file size limit of 100 MB, supporting all media types
 const upload = multer({
   storage,
-  fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
 });
 
 export default upload;

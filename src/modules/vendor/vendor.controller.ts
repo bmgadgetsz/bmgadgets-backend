@@ -41,7 +41,7 @@ const createVendorAdminHandler = catchAsync(async (req, res, next) => {
       err instanceof Prisma.PrismaClientKnownRequestError &&
       err.code === "P2002"
     ) {
-      let message =
+      const message =
         "This email or phone number is already in use. Please use a different email or phone number";
       throw new ApiError(httpStatus?.BAD_REQUEST, message);
     } else next(err);
@@ -71,7 +71,7 @@ const createVendorHandler = catchAsync(async (req, res, next) => {
       err instanceof Prisma.PrismaClientKnownRequestError &&
       err.code === "P2002"
     ) {
-      let message =
+      const message =
         "This email or phone number is already in use. Please use a different email or phone number";
       throw new ApiError(httpStatus?.BAD_REQUEST, message);
     } else next(err);
@@ -212,14 +212,14 @@ const updateVendorStatusHandler = catchAsync(async (req, res) => {
   const { vendorId } = req.params;
   const { onboardingStatus, rejectionReason } = req.body;
 
-  let updated = await vendorService.updateVendorStatus(
+  const updated = await vendorService.updateVendorStatus(
     vendorId,
     onboardingStatus as VendorOnboardingStatus,
     rejectionReason,
   );
 
-  let razorpayError = false;
-  let razorpayErrorMessage = "";
+  const razorpayError = false;
+  const razorpayErrorMessage = "";
   // If vendor status is approved, create RazorpayX contact + fund account
   // if (updated.onboardingStatus === VendorOnboardingStatus.KYC_APPROVED) {
   //   try {

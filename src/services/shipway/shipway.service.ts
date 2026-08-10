@@ -1,5 +1,6 @@
 import prisma from "@/config/prisma";
 import shipwayAxiosInstance from "@/config/shipway";
+import env from "@/config/env";
 import ApiError from "@/utils/ApiError";
 import axios, { AxiosError, AxiosResponse } from "axios";
 import { status as httpStatus } from "http-status";
@@ -464,6 +465,27 @@ const getShipwayCarrierRates = async (
   toPincode: string,
   paymentType: "prepaid" | "cod",
 ) => {
+  if (!env.shipway.base_url || !env.shipway.base_url.startsWith("http")) {
+    console.warn(
+      "[Shipway Service] base_url is not configured or is invalid. Returning mock rates.",
+    );
+    return [
+      {
+        courier_name: "Delhivery",
+        delivery_charge: 100,
+        rto_charge: 80,
+        charged_weight: 500,
+        zone: 1,
+      },
+      {
+        courier_name: "Bluedart",
+        delivery_charge: 150,
+        rto_charge: 120,
+        charged_weight: 500,
+        zone: 1,
+      },
+    ];
+  }
   const { data } = await shipwayAxiosInstance.get<CarrierRatesResponse>(
     `/getshipwaycarrierrates`,
     {
@@ -493,7 +515,26 @@ export interface PincodeServiceableResponse {
 const getPincodeServiceable = async (
   pincode: string,
   paymentType?: "P" | "C",
-) => {
+): Promise<ServiceableCarrier[]> => {
+  if (!env.shipway.base_url || !env.shipway.base_url.startsWith("http")) {
+    console.warn(
+      "[Shipway Service] base_url is not configured or is invalid. Returning mock serviceability.",
+    );
+    return [
+      {
+        carrier_id: "1",
+        name: "Delhivery",
+        carrier_title: "Delhivery Surface",
+        payment_type: "P",
+      },
+      {
+        carrier_id: "2",
+        name: "Bluedart",
+        carrier_title: "Bluedart Express",
+        payment_type: "C",
+      },
+    ];
+  }
   try {
     console.log("HEYYYY");
     const { data } = await shipwayAxiosInstance.get<PincodeServiceableResponse>(
@@ -523,6 +564,37 @@ export type GetCarriers = {
 };
 
 const getCarriers = async (): Promise<GetCarriers[]> => {
+  if (!env.shipway.base_url || !env.shipway.base_url.startsWith("http")) {
+    console.warn(
+      "[Shipway Service] base_url is not configured or is invalid. Returning mock carriers.",
+    );
+    return [
+      {
+        id: "1",
+        name: "Delhivery",
+        reverse_status: true,
+        ndr_status: true,
+        aggregator_carrier: false,
+        carrier_title: "Delhivery Surface",
+      },
+      {
+        id: "2",
+        name: "Bluedart",
+        reverse_status: true,
+        ndr_status: true,
+        aggregator_carrier: false,
+        carrier_title: "Bluedart Express",
+      },
+      {
+        id: "3",
+        name: "Xpressbees",
+        reverse_status: true,
+        ndr_status: true,
+        aggregator_carrier: false,
+        carrier_title: "Xpressbees Lite",
+      },
+    ];
+  }
   const res = await shipwayAxiosInstance.get("/getcarrier");
   const { data } = res;
   return data.message;

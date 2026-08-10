@@ -31,7 +31,20 @@ const updateUser = catchAsync(async (req, res, next) => {
       "You are not allowed to update this user",
     );
 
-  if (data.email || data.phone) {
+  // If email is empty string or placeholder string, remove it from update data to preserve unique constraint
+  if (
+    data.email !== undefined &&
+    (data.email === "" || data.email.startsWith("PLACEHOLDER#"))
+  ) {
+    delete data.email;
+  }
+
+  const isRealEmailUpdate =
+    data.email &&
+    data.email !== res.locals.currentUser.email &&
+    !data.email.startsWith("PLACEHOLDER#");
+
+  if (isRealEmailUpdate || data.phone) {
     if (!data.otp)
       throw new ApiError(
         httpStatus.BAD_REQUEST,
@@ -56,17 +69,25 @@ const updateUser = catchAsync(async (req, res, next) => {
     else next(error);
   }
 
+  const cleanEmail = response?.email?.startsWith("PLACEHOLDER#")
+    ? ""
+    : response?.email;
+
   res.status(httpStatus.CREATED).json({
     success: true,
     message: "Customer profile updated successfully",
     data: {
       ...{
         ...response,
+        email: cleanEmail,
         gender: response?.customerProfile?.gender ?? "",
         age: response?.customerProfile?.age ?? 0,
       },
       customerProfileCompleted: true,
-      hasPrimaryAddress: !!response?.customerProfile?.addresses[0],
+      hasPrimaryAddress: !!(
+        response?.customerProfile?.addresses &&
+        response.customerProfile.addresses[0]
+      ),
     },
   });
 });
@@ -211,18 +232,22 @@ const getPaginatedUsers = catchAsync(async (req, res) => {
 
 const getAddresses = catchAsync(async (_req, res) => {
   const customerProfileId = res.locals.currentUser?.customerProfile?.id;
-  if (!customerProfileId)
-    throw new ApiError(httpStatus.NOT_FOUND, "Profile not completed");
+  if (!customerProfileId) {
+    res.status(httpStatus.OK).json({
+      success: true,
+      message: "Addresses fetched successfully",
+      data: [],
+    });
+    return;
+  }
 
-  let response: unknown = null;
-  if (customerProfileId)
-    response =
-      await userService.getAddressByCustomerProfileId(customerProfileId);
+  const response =
+    await userService.getAddressByCustomerProfileId(customerProfileId);
 
   res.status(httpStatus.OK).json({
     success: true,
     message: "Addresses fetched successfully",
-    data: response,
+    data: response || [],
   });
 });
 
@@ -318,8 +343,14 @@ const getPaginatedWalletLogs = catchAsync(async (req, res) => {
   const options = pick(req.query, ["sort_by", "sort_order", "limit", "page"]);
 
   const customerProfileId = res.locals.currentUser?.customerProfile?.id;
-  if (!customerProfileId)
-    throw new ApiError(httpStatus.NOT_FOUND, "Profile not completed");
+  if (!customerProfileId) {
+    res.status(httpStatus.OK).json({
+      success: true,
+      message: "Wallet logs fetched successfully",
+      data: { results: [], totalResults: 0, page: 1, limit: 10, totalPages: 0 },
+    });
+    return;
+  }
   filters.customerProfileId = customerProfileId;
 
   const response = await userService.getPaginatedWalletLogs(filters, options);

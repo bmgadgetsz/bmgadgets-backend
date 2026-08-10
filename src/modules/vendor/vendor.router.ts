@@ -1,9 +1,9 @@
 import handleAuth from "@/middleware/handleAuth";
 import validateRequest from "@/middleware/validateRequest";
 import { Router } from "express";
+import checkPermission from "@/middleware/checkPermission";
 import vendorController from "./vendor.controller";
 import vendorValidator from "./vendor.validator";
-import checkPermission from "@/middleware/checkPermission";
 
 const vendorRouter = Router();
 
@@ -53,7 +53,7 @@ vendorRouter.get(
   vendorController.getOrdersByStatus,
 );
 
-//vendor onboarding from frontend
+// vendor onboarding from frontend
 vendorRouter
   .route("/")
   .post(

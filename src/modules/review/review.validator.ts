@@ -4,6 +4,10 @@ const createReviewSchema = z.object({
   body: z.strictObject({
     rating: z.number().positive(),
     imageUrl: z.string().url().optional(),
+    imageUrls: z
+      .array(z.string().url())
+      .max(2, "Maximum 2 images allowed per review")
+      .optional(),
     message: z.string(),
     productId: z.string(),
   }),
@@ -13,6 +17,10 @@ const updateReviewSchema = z.object({
   body: z.strictObject({
     rating: z.number().positive().optional(),
     imageUrl: z.string().url().optional(),
+    imageUrls: z
+      .array(z.string().url())
+      .max(2, "Maximum 2 images allowed per review")
+      .optional(),
     message: z.string().optional(),
     approved: z.boolean().optional(),
     productId: z.string().optional(),

@@ -3,11 +3,14 @@
   "type": "module",
   "version": "1.0.0",
   "main": "build/index.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "test": "node --experimental-vm-modules node_modules/.bin/jest",
     "dev": "tsx --watch src/index.ts",
     "check": "npx tsup && npx eslint src --max-warnings=0",
-    "build": "npx prisma generate && tsup && tsx src/seed.ts",
+    "build": "npx prisma generate && tsup && npm run build --prefix admin-panel && tsx src/seed.ts",
     "start": "node build/index.cjs"
   },
   "keywords": [],
@@ -47,6 +50,7 @@
     "axios": "^1.12.2",
     "bson": "^6.10.4",
     "bullmq": "^5.58.5",
+    "cheerio": "^1.2.0",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
