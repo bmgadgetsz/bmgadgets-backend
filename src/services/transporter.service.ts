@@ -3,15 +3,10 @@ import env from "@/config/env.js";
 
 // Create a reusable transporter object
 const transporter = nodemailer.createTransport({
-  host: "smtp-mail.outlook.com",
-  port: 587,
-  secure: false,
+  service: "gmail",
   auth: {
     user: env.email.user,
     pass: env.email.pass,
-  },
-  tls: {
-    ciphers: "SSLv3",
   },
 });
 
