@@ -2,7 +2,7 @@
   "name": "express-boilerplate",
   "type": "module",
   "version": "1.0.0",
-  "main": "build/index.js",
+  "main": "build/index.cjs",
   "engines": {
     "node": ">=18.0.0"
   },
