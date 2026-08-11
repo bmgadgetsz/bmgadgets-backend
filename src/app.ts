@@ -25,8 +25,8 @@ app.use(morgan("dev"));
 app.get("/", (_req, res) => {
   res.send("Hello World");
 });
-app.get("/health", (_req, res) => {
-  res.status(httpStatus.OK).json({ status: "ok", timestamp: new Date().toISOString() });
+app.get("/api/v1/test-debug", (_req, res) => {
+  res.status(httpStatus.OK).json({ debug: "ok", timestamp: new Date().toISOString() });
 });
 app.use("/api/v1", v1Router);
 
