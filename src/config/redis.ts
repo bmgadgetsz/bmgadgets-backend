@@ -7,7 +7,20 @@ const redis = redisUrl
   ? new Redis(redisUrl, {
       tls: redisUrl.startsWith("rediss://") ? {} : undefined,
       maxRetriesPerRequest: null,
+      enableOfflineQueue: false,
     })
-  : new Redis();
+  : new Redis({
+      maxRetriesPerRequest: null,
+      enableOfflineQueue: false,
+    });
+
+// Catch unhandled error events gracefully to prevent server log spam when Valkey is off or connecting
+redis.on("error", (err) => {
+  if (err.message.includes("ENOTFOUND")) {
+    // Quiet warning for DNS resolution issues
+    return;
+  }
+  console.warn("[Redis Warning]", err.message);
+});
 
 export default redis;
