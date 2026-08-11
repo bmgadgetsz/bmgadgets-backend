@@ -1,7 +1,7 @@
 import { validateSessionToken } from "@/modules/auth/auth.service";
 import ApiError from "@/utils/ApiError";
 import { RequestHandler } from "express";
-import httpStatus from "http-status"; // Import HTTP status codes
+import { status as httpStatus } from "http-status"; // Import HTTP status codes
 
 /**
  * Authentication middle that checks if user is logged in to perform the action that follows

@@ -1,7 +1,7 @@
 import { Access, Resource, Role } from "@/generated/prisma"; // Import necessary types
 import ApiError from "@/utils/ApiError.js"; // Custom error handling class
 import { RequestHandler } from "express"; // Type for Express request handler
-import httpStatus from "http-status"; // HTTP status codes
+import { status as httpStatus } from "http-status"; // HTTP status codes
 
 /**
  * This is the middleware that checks if a user has necessary permissions to perform the action that'll follow

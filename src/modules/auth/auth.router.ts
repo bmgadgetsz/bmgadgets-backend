@@ -1,6 +1,6 @@
 import validateRequest from "@/middleware/validateRequest";
 import { Router } from "express";
-import { rateLimit } from "express-rate-limit";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { status as httpStatus } from "http-status";
 import handleAuth from "@/middleware/handleAuth";
 import env from "@/config/env";
@@ -16,10 +16,13 @@ const generateOtpLimiter = rateLimit({
   validate: { trustProxy: false, xForwardedForHeader: false },
   keyGenerator: (req) => {
     const xForwardedFor = req.headers["x-forwarded-for"];
-    if (typeof xForwardedFor === "string") {
-      return xForwardedFor.split(",")[0].trim();
-    }
-    return req.ip || "127.0.0.1";
+    const ip =
+      typeof xForwardedFor === "string"
+        ? xForwardedFor.split(",")[0].trim()
+        : req.ip || "127.0.0.1";
+    // ipKeyGenerator normalizes IPv6 addresses to their /56 subnet so IPv6
+    // users can't rotate addresses to bypass the limit.
+    return ipKeyGenerator(ip);
   },
   handler: (_, res) => {
     res.status(httpStatus.TOO_MANY_REQUESTS).json({

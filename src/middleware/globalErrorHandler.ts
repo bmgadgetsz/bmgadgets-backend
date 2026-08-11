@@ -1,9 +1,11 @@
 import { ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
-import ApiError from "@/utils/ApiError";
 import env from "@/config/env";
-import { PrismaClientKnownRequestError } from "@/generated/prisma/runtime/library";
-import httpStatus from "http-status"; // Import HTTP status codes
+// NOTE: http-status v2 exposes codes under the named `status` export. The
+// default import resolves differently between tsx (dev) and the tsup CJS
+// bundle (production) - in the bundle `httpStatus.INTERNAL_SERVER_ERROR` was
+// undefined, which made res.status() throw and crashed this error handler.
+import { status as httpStatus } from "http-status";
 
 /**
  * This is a global error handler which handles all caught and uncaught errors
@@ -48,24 +50,40 @@ const globalErrorHandler: ErrorRequestHandler = (error, req, res, _next) => {
     message = error.message || message;
   }
   // 2. Zod Error (duck-typed for CJS bundle safety)
-  else if (error?.name === "ZodError" || error instanceof ZodError || Array.isArray(error?.errors)) {
+  else if (
+    error?.name === "ZodError" ||
+    error instanceof ZodError ||
+    Array.isArray(error?.errors)
+  ) {
     statusCode = httpStatus.BAD_REQUEST;
     message = "Validation error";
     if (Array.isArray(error?.errors)) {
-      errors = error.errors.map((e: any) => ({
-        path: Array.isArray(e.path) ? e.path.join(".") : e.path,
-        error: e.message || String(e),
-      }));
+      errors = error.errors.map(
+        (e: { path?: string | string[]; message?: string }) => ({
+          path: Array.isArray(e.path) ? e.path.join(".") : e.path,
+          error: e.message || String(e),
+        }),
+      );
     }
   }
   // 3. Prisma Known Request Error
-  else if (error?.code && typeof error.code === "string" && error.code.startsWith("P")) {
+  else if (
+    error?.code &&
+    typeof error.code === "string" &&
+    error.code.startsWith("P")
+  ) {
     statusCode = httpStatus.BAD_REQUEST;
     message = `Database error (${error.code}): ${error.message || "Failed operation"}`;
   }
   // 4. Standard JavaScript Error
   else if (error?.message) {
     message = error.message;
+  }
+
+  // Never let the error handler itself crash: an invalid status code would
+  // make Express fall back to its default HTML error page.
+  if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599) {
+    statusCode = 500;
   }
 
   res.status(statusCode).json({
