@@ -34,7 +34,21 @@ api.interceptors.response.use(
       // Dispatch custom event to let auth store know
       window.dispatchEvent(new Event('admin_logout'));
     }
-    const msg = error.response?.data?.message || error.message || 'Server connection error';
+    let msg = 'Server connection error';
+    if (error.response?.data) {
+      if (typeof error.response.data === 'string') {
+        msg = error.response.data;
+      } else if (error.response.data.message) {
+        msg = error.response.data.message;
+        if (Array.isArray(error.response.data.errors) && error.response.data.errors.length > 0) {
+          msg += ` (${error.response.data.errors.map((e: any) => e.error || e.message || JSON.stringify(e)).join(', ')})`;
+        }
+      } else {
+        msg = JSON.stringify(error.response.data);
+      }
+    } else if (error.message) {
+      msg = error.message;
+    }
     return Promise.reject(new Error(msg));
   }
 );
