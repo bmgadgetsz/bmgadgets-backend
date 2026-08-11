@@ -12,9 +12,14 @@ import httpStatus from "http-status"; // Import HTTP status codes
  * @param res - response object
  * @param _next - next function to pass the error
  */
-const globalErrorHandler: ErrorRequestHandler = (error, req, res, next) => {
+const globalErrorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   if (res.headersSent) {
-    return next(error);
+    try {
+      res.end();
+    } catch {
+      // ignore
+    }
+    return;
   }
 
   // Safe logging without throwing on circular structures
