@@ -1,7 +1,6 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import xss from "xss-clean";
 import morgan from "morgan";
 import path from "path";
 import { status as httpStatus } from "http-status";
@@ -9,7 +8,6 @@ import ApiError from "./utils/ApiError";
 import v1Router from "./routes/v1";
 import corsConfig from "./config/cors";
 import globalErrorHandler from "./middleware/globalErrorHandler";
-import env from "./config/env";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -19,11 +17,10 @@ app.use(
     contentSecurityPolicy: false,
   }),
 );
+app.use(cors(corsConfig));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(xss());
 app.use(morgan("dev"));
-app.use(cors(env.app.nodeEnv === "development" ? undefined : corsConfig));
 
 app.get("/", (_req, res) => {
   res.send("Hello World");

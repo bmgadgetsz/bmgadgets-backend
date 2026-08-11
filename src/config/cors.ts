@@ -23,22 +23,7 @@ const staticAllowed = [
 ];
 
 const corsConfig = {
-  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    // Allow requests with no origin (like mobile apps, curl, or same-origin requests)
-    if (!origin) return callback(null, true);
-
-    if (
-      staticAllowed.includes(origin) ||
-      origin.endsWith(".onrender.com") ||
-      origin.endsWith(".vercel.app") ||
-      origin.endsWith(".amplifyapp.com") ||
-      process.env.ALLOWED_ORIGINS === "*"
-    ) {
-      return callback(null, true);
-    }
-
-    return callback(null, true);
-  },
+  origin: true,
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
 };
