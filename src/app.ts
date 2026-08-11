@@ -36,10 +36,12 @@ app.get("/admin/*", (_req, res) => {
   res.sendFile(path.join(process.cwd(), "public/admin", "index.html"));
 });
 
-app.use((req) => {
-  throw new ApiError(
-    httpStatus.NOT_FOUND,
-    `${req.method} ${req.originalUrl} not found`,
+app.use((req, _res, next) => {
+  next(
+    new ApiError(
+      httpStatus.NOT_FOUND,
+      `${req.method} ${req.originalUrl} not found`,
+    ),
   );
 });
 app.use(globalErrorHandler);
