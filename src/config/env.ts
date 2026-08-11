@@ -12,7 +12,7 @@ const env = {
     // Application configuration
     port: process.env.PORT || 5000,
     nodeEnv: process.env.NODE_ENV || "development",
-    superadminEmail: process.env.SUPERADMIN_EMAIL || "superadmin@bmq.com",
+    superadminEmail: process.env.SUPERADMIN_EMAIL || "bmgadgetsz@gmail.com",
     seedVendorEmail:
       process.env.ORIGINO_VENDOR_EMAIL || "vendor-seed@example.com",
     seedVendorPhone: process.env.ORIGINO_VENDOR_PHONE || "0000000000",
