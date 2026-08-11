@@ -125,6 +125,11 @@ export const pushOrderQueue = new Queue("shipway-pushOrder", {
   connection: redisConnection,
 });
 
+pushOrderQueue.on("error", (err) => {
+  // Prevent unhandled error event crash when Redis/Valkey connection fails
+  console.warn("[BullMQ Queue Warning]", err.message);
+});
+
 // exported for other modules to use
 export const enqueuePushOrder = (orderId: string) => {
   return pushOrderQueue.add(
@@ -687,6 +692,11 @@ export const shipwayPushWorker = new Worker(
   },
   { connection: redisConnection },
 );
+
+shipwayPushWorker.on("error", (err) => {
+  // Prevent unhandled error event crash when Redis/Valkey connection fails
+  console.warn("[BullMQ Worker Warning]", err.message);
+});
 
 // graceful shutdown
 process.on("SIGINT", async () => {
