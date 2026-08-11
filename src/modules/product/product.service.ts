@@ -64,6 +64,26 @@ const createProduct = async (
     await enforceMaxFlashDeals();
   }
 
+  if (!productData.brandId || !isValidObjectId(productData.brandId)) {
+    let defaultBrand = await prisma.brand.findFirst();
+    if (!defaultBrand) {
+      defaultBrand = await prisma.brand.create({
+        data: { name: "General Brand", description: "Default brand" },
+      });
+    }
+    productData.brandId = defaultBrand.id;
+  }
+
+  if (!productData.hsnId || !isValidObjectId(productData.hsnId)) {
+    let defaultHsn = await prisma.hsnConfig.findFirst();
+    if (!defaultHsn) {
+      defaultHsn = await prisma.hsnConfig.create({
+        data: { hsnCode: "9999", description: "General HSN", gstRate: 18 },
+      });
+    }
+    productData.hsnId = defaultHsn.id;
+  }
+
   const resolvedVarients = await Promise.all(
     varients.map(async (variant) => {
       const { price: _p, variantName, ...rest } = variant as any;

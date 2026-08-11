@@ -655,6 +655,9 @@ export const ProductList: React.FC = () => {
         }));
       }
 
+      if (!payload.brandId || payload.brandId.trim() === '') delete payload.brandId;
+      if (!payload.hsnId || payload.hsnId.trim() === '') delete payload.hsnId;
+
       if (selectedProduct) {
         await api.patch(`/products/${selectedProduct.id}`, payload);
         setMessage('Product updated successfully!');
@@ -666,7 +669,8 @@ export const ProductList: React.FC = () => {
       setSelectedProduct(null);
       fetchProducts();
     } catch (err: any) {
-      setMessage(err.message);
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to save product';
+      setMessage(`Error: ${errorMsg}`);
     } finally {
       setLoading(false);
     }
@@ -953,6 +957,7 @@ export const ProductList: React.FC = () => {
     setSelectedProduct(null);
     setPastedLink('');
     setLinkFetchSuccess(null);
+    setMessage(null);
     setProductForm({
       name: '', brandId: brands[0]?.id || '', hsnId: hsns[0]?.id || '', tags: '', originCountry: 'India',
       description: '', ingredients: '', healthBenefits: '', usageInstructions: '', storageInstructions: '',
