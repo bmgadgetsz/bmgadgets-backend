@@ -1,9 +1,11 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: window.location.port === '5173' || window.location.port === '3000'
-    ? `http://${window.location.hostname}:5000/api/v1`
-    : '/api/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL || (
+    window.location.port === '5173' || window.location.port === '3000'
+      ? `http://${window.location.hostname}:5000/api/v1`
+      : '/api/v1'
+  ),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -32,7 +34,7 @@ api.interceptors.response.use(
       // Dispatch custom event to let auth store know
       window.dispatchEvent(new Event('admin_logout'));
     }
-    const msg = error.response?.data?.message || 'Server connection error';
+    const msg = error.response?.data?.message || error.message || 'Server connection error';
     return Promise.reject(new Error(msg));
   }
 );
