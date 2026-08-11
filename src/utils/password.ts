@@ -1,15 +1,16 @@
 import { Prisma, User } from "@/generated/prisma";
-import { hash, verify } from "@node-rs/argon2";
+import crypto from "crypto";
 import { status as httpStatus } from "http-status";
 import prisma from "@/config/prisma";
 import ApiError from "./ApiError";
 
 export const hashPassword = async (password: string): Promise<string> => {
-  return hash(password, {
-    memoryCost: 19456, // Memory cost parameter for Argon2
-    timeCost: 2, // Time cost parameter for Argon2
-    outputLen: 32, // Length of the output hash
-    parallelism: 1, // Degree of parallelism
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16).toString("hex");
+    crypto.pbkdf2(password, salt, 1000, 64, "sha512", (err, derivedKey) => {
+      if (err) return reject(err);
+      resolve(`${salt}:${derivedKey.toString("hex")}`);
+    });
   });
 };
 
@@ -17,8 +18,14 @@ export const verifyPasswordHash = async (
   hashedPassword: string,
   password: string,
 ): Promise<boolean> => {
-  if (!hashedPassword) return false; // Return false if no hashed password is provided
-  return verify(hashedPassword, password);
+  if (!hashedPassword || !hashedPassword.includes(":")) return false;
+  const [salt, key] = hashedPassword.split(":");
+  return new Promise((resolve) => {
+    crypto.pbkdf2(password, salt, 1000, 64, "sha512", (err, derivedKey) => {
+      if (err) return resolve(false);
+      resolve(derivedKey.toString("hex") === key);
+    });
+  });
 };
 
 export const checkOtp = async (
