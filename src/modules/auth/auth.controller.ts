@@ -25,16 +25,16 @@ const generateOtp = catchAsync(async (req, res) => {
     throw new ApiError(httpStatus.BAD_REQUEST, "Email address is required");
 
   let user = await prisma.user.findFirst({
-    where: { email: { equals: email, mode: "insensitive" } },
+    where: { email },
     include: { role: true },
   });
 
-  if (user?.role.isAdmin && requestedFrom !== "admin")
+  if (user?.role?.isAdmin && requestedFrom !== "admin")
     throw new ApiError(
       httpStatus.FORBIDDEN,
       "Please login from the admin portal",
     );
-  if (user?.role.isVendor && requestedFrom !== "vendor")
+  if (user?.role?.isVendor && requestedFrom !== "vendor")
     throw new ApiError(
       httpStatus.FORBIDDEN,
       "Please login from the vendor portal",
