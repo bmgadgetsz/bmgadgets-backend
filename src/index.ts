@@ -1,8 +1,16 @@
 import http from "http";
 import app from "./app";
 import env from "./config/env";
+import validateDatabaseUrl from "./config/validateDatabaseUrl";
+import { verifyMailTransport } from "./services/transporter.service";
 import "./jobs";
 import initSocketIo from "./config/socket";
+
+validateDatabaseUrl(env.db.url);
+verifyMailTransport().catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error("[MAIL] Startup verification error:", err);
+});
 
 const server = http.createServer(app);
 

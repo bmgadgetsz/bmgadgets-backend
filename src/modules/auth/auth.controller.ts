@@ -78,15 +78,25 @@ const generateOtp = catchAsync(async (req, res) => {
     },
   });
 
-  // 2. Dispatch email sending asynchronously so API responds quickly
-  if (env.email.user && (env.email.pass || env.email.brevoApiKey)) {
-    transporter
-      .sendMail({
-        from: env.email.user,
-        to: email,
-        subject: "Your BMGadgets Verification OTP Code",
-        text: `Your OTP verification code for BMGadgets is ${otp}. It will expire in 5 minutes.`,
-        html: `
+  // 2. Send OTP email — await so failures are surfaced to the client
+  if (!env.email.user || (!env.email.pass && !env.email.brevoApiKey)) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[MAIL] Email not configured on server. OTP for ${email}: ${otp}`,
+    );
+    throw new ApiError(
+      httpStatus.SERVICE_UNAVAILABLE,
+      "Email service is not configured. Please contact support.",
+    );
+  }
+
+  try {
+    await transporter.sendMail({
+      from: env.email.user,
+      to: email,
+      subject: "Your BMGadgets Verification OTP Code",
+      text: `Your OTP verification code for BMGadgets is ${otp}. It will expire in 5 minutes.`,
+      html: `
           <div style="font-family: Arial, sans-serif; padding: 24px; color: #1e293b; max-width: 480px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px;">
             <h2 style="color: #2563eb; font-weight: 800; margin-top: 0;">BMGadgets Login Code</h2>
             <p style="font-size: 14px; color: #64748b;">Use the following 5-digit verification code to complete your login:</p>
@@ -96,22 +106,18 @@ const generateOtp = catchAsync(async (req, res) => {
             <p style="font-size: 12px; color: #94a3b8;">This OTP code expires in 5 minutes. If you did not request this code, please ignore this email.</p>
           </div>
         `,
-      })
-      .then(() => {
-        // eslint-disable-next-line no-console
-        console.log(`[SMTP] Successfully sent OTP email to ${email}`);
-      })
-      .catch((err) => {
-        // eslint-disable-next-line no-console
-        console.error(
-          `[SMTP] Error sending OTP email to ${email}:`,
-          err?.message || err,
-        );
-      });
-  } else {
+    });
     // eslint-disable-next-line no-console
-    console.warn(
-      `[SMTP Warning] EMAIL_USER or EMAIL_PASS not set on server. OTP for ${email} is ${otp}`,
+    console.log(`[MAIL] OTP email sent to ${email}`);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[MAIL] Failed to send OTP to ${email}:`,
+      (err as Error)?.message || err,
+    );
+    throw new ApiError(
+      httpStatus.SERVICE_UNAVAILABLE,
+      "Failed to send OTP email. Please try again in a moment.",
     );
   }
 

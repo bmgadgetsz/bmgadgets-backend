@@ -3,21 +3,8 @@ import nodemailer, { type SendMailOptions } from "nodemailer";
 import axios from "axios";
 import env from "@/config/env.js";
 
-// Node 17+ prefers IPv6 results; many hosts (incl. Render) have no IPv6 route,
-// which makes SMTP fail with ENETUNREACH even when the port itself is open.
 dns.setDefaultResultOrder("ipv4first");
 
-/**
- * IMPORTANT (production): Render FREE web services block ALL outbound SMTP
- * traffic (ports 25/465/587) at the network level since Sep 2025:
- * https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports
- * Nodemailer/Gmail can therefore never connect from a free instance, no matter
- * how it is configured. The escape hatch is sending over HTTPS (port 443).
- *
- * Set BREVO_API_KEY to route all email through Brevo's HTTPS API.
- * When it is not set, we fall back to plain Gmail SMTP (works locally / on
- * paid instances).
- */
 const smtpTransporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
@@ -32,12 +19,37 @@ const smtpTransporter = nodemailer.createTransport({
 });
 
 const useBrevo = !!env.email.brevoApiKey;
+const isProduction = env.app.nodeEnv === "production";
 
-/** Send through Brevo's HTTPS API (port 443, never blocked by Render). */
+const formatBrevoError = (err: unknown): string => {
+  if (!axios.isAxiosError(err)) return (err as Error)?.message || String(err);
+  const data = err.response?.data;
+  if (typeof data === "string") return data;
+  if (data && typeof data === "object") {
+    const { message: brevoMessage, code } = data as {
+      message?: string;
+      code?: string;
+    };
+    return [code, brevoMessage].filter(Boolean).join(": ") || err.message;
+  }
+  return err.message;
+};
+
+/** Send through Brevo's HTTPS API (port 443, works on Render free tier). */
 const sendViaBrevo = async (options: SendMailOptions) => {
+  if (!env.email.user) {
+    throw new Error(
+      "EMAIL_USER is not set. Brevo requires a verified sender email in EMAIL_USER.",
+    );
+  }
+
   const toList = (Array.isArray(options.to) ? options.to : [options.to])
     .filter(Boolean)
     .map((addr) => ({ email: String(addr) }));
+
+  if (!toList.length) {
+    throw new Error("No recipient email address provided.");
+  }
 
   const attachment = (options.attachments || [])
     .filter((a) => a.content)
@@ -68,65 +80,118 @@ const sendViaBrevo = async (options: SendMailOptions) => {
   );
 };
 
-/**
- * Unified mail dispatcher. Same call signature as nodemailer's
- * transporter.sendMail so existing call sites keep working.
- */
 const dispatchMail = async (options: SendMailOptions): Promise<void> => {
   if (useBrevo) {
     try {
       await sendViaBrevo(options);
       return;
     } catch (err) {
-      const detail = axios.isAxiosError(err)
-        ? JSON.stringify(err.response?.data) || err.message
-        : (err as Error)?.message;
+      const detail = formatBrevoError(err);
       // eslint-disable-next-line no-console
-      console.error(
-        `[MAIL] Brevo API failed (${detail}); falling back to SMTP...`,
-      );
+      console.error(`[MAIL] Brevo API failed: ${detail}`);
+
+      // On Render, SMTP is blocked — falling back would silently fail too.
+      if (isProduction) {
+        throw new Error(
+          `Email delivery failed via Brevo: ${detail}. ` +
+            "Verify BREVO_API_KEY and that EMAIL_USER is a verified sender in Brevo → Senders.",
+        );
+      }
+
+      // eslint-disable-next-line no-console
+      console.warn("[MAIL] Brevo failed in dev; trying Gmail SMTP fallback...");
     }
   }
+
+  if (!env.email.user || !env.email.pass) {
+    throw new Error(
+      "Email is not configured. Set BREVO_API_KEY (production) or EMAIL_USER + EMAIL_PASS (local).",
+    );
+  }
+
   await smtpTransporter.sendMail({ from: env.email.user, ...options });
 };
 
-// Log the active transport once at startup so production logs make the
-// email path obvious, and surface SMTP reachability problems immediately.
-// eslint-disable-next-line no-console
-console.log(
-  `[MAIL] Transport: ${useBrevo ? "Brevo HTTPS API (+SMTP fallback)" : "Gmail SMTP only"}`,
-);
-if (!useBrevo && env.email.user && env.email.pass) {
-  smtpTransporter
-    .verify()
-    .then(() => {
+/** Check Brevo API key and sender verification at startup. */
+export const verifyMailTransport = async (): Promise<void> => {
+  if (!env.email.user) {
+    // eslint-disable-next-line no-console
+    console.warn("[MAIL] EMAIL_USER is not set — emails cannot be sent.");
+    return;
+  }
+
+  if (useBrevo) {
+    try {
+      const [accountRes, sendersRes] = await Promise.all([
+        axios.get("https://api.brevo.com/v3/account", {
+          headers: { "api-key": env.email.brevoApiKey },
+          timeout: 10000,
+        }),
+        axios.get("https://api.brevo.com/v3/senders", {
+          headers: { "api-key": env.email.brevoApiKey },
+          timeout: 10000,
+        }),
+      ]);
+
+      const senders: { email?: string; active?: boolean }[] =
+        sendersRes.data?.senders || [];
+      const senderVerified = senders.some(
+        (s) =>
+          s.email?.toLowerCase() === env.email.user?.toLowerCase() && s.active,
+      );
+
       // eslint-disable-next-line no-console
       console.log(
-        "[MAIL] SMTP connection verified: smtp.gmail.com is reachable",
+        `[MAIL] Brevo account OK (${accountRes.data?.email || "connected"}). ` +
+          `Sender ${env.email.user}: ${senderVerified ? "verified" : "NOT VERIFIED — emails will fail"}`,
       );
-    })
-    .catch((err) => {
+
+      if (!senderVerified) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[MAIL] ACTION REQUIRED: Add and verify "${env.email.user}" in Brevo → Senders & IP → Senders.`,
+        );
+      }
+    } catch (err) {
       // eslint-disable-next-line no-console
       console.error(
-        "[MAIL] SMTP connection FAILED. If this is a Render FREE instance, outbound SMTP ports are blocked by Render - set BREVO_API_KEY to send over HTTPS instead. Error:",
-        err?.message || err,
+        `[MAIL] Brevo startup check failed: ${formatBrevoError(err)}`,
       );
-    });
-}
+    }
+    return;
+  }
 
-export const sendMail = async (to: string, subject: string, html: string) => {
-  try {
-    await dispatchMail({ to, subject, html });
+  if (env.email.pass) {
+    try {
+      await smtpTransporter.verify();
+      // eslint-disable-next-line no-console
+      console.log("[MAIL] Gmail SMTP connection verified.");
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[MAIL] Gmail SMTP unreachable:",
+        (err as Error)?.message || err,
+      );
+    }
+  } else {
     // eslint-disable-next-line no-console
-    console.log(`[MAIL] Email sent to ${to} with subject: ${subject}`);
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error("[MAIL] Error sending email:", error);
+    console.warn(
+      "[MAIL] No BREVO_API_KEY or EMAIL_PASS — email sending is disabled.",
+    );
   }
 };
 
-// Default export keeps the nodemailer-like `.sendMail()` surface used across
-// the codebase (auth OTP, payout statements, etc.).
+// eslint-disable-next-line no-console
+console.log(
+  `[MAIL] Transport: ${useBrevo ? "Brevo HTTPS API" : "Gmail SMTP"} | sender: ${env.email.user || "(not set)"}`,
+);
+
+export const sendMail = async (to: string, subject: string, html: string) => {
+  await dispatchMail({ to, subject, html });
+  // eslint-disable-next-line no-console
+  console.log(`[MAIL] Email sent to ${to} | subject: ${subject}`);
+};
+
 const transporter = {
   sendMail: dispatchMail,
 };
