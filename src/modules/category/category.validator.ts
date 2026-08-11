@@ -7,8 +7,9 @@ const createCategorySchema = z.object({
       .string()
       .regex(/^[A-Za-z ]+$/, "Only alphabetic characters are allowed"),
     imageUrl: z.string().url(),
-    availableTags: z.array(z.string()),
-    description: z.string(),
+    availableTags: z.array(z.string()).optional(),
+    description: z.string().optional(),
+    active: z.boolean().optional(),
   }),
 });
 

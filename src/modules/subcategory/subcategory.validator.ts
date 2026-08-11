@@ -5,8 +5,9 @@ const createSubCategorySchema = z.object({
     name: z
       .string()
       .regex(/^[A-Za-z ]+$/, "Only alphabetic characters are allowed"),
-    description: z.string(),
+    description: z.string().optional(),
     categoryId: z.string(),
+    active: z.boolean().optional(),
   }),
 });
 
