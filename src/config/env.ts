@@ -41,8 +41,10 @@ const env = {
   email: {
     // Email configuration for sending emails
     user: process.env.EMAIL_USER,
-
     pass: process.env.EMAIL_PASS,
+    // Brevo HTTPS API key - required on hosts that block outbound SMTP
+    // (e.g. Render free tier). When set, mail is sent over port 443.
+    brevoApiKey: process.env.BREVO_API_KEY,
   },
   // envs for razorpay payments
   razorpay: {

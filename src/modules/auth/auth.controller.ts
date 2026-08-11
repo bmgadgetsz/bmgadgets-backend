@@ -79,7 +79,7 @@ const generateOtp = catchAsync(async (req, res) => {
   });
 
   // 2. Dispatch email sending asynchronously so API responds quickly
-  if (env.email.user && env.email.pass) {
+  if (env.email.user && (env.email.pass || env.email.brevoApiKey)) {
     transporter
       .sendMail({
         from: env.email.user,
