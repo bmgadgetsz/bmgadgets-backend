@@ -12,44 +12,62 @@ import httpStatus from "http-status"; // Import HTTP status codes
  * @param res - response object
  * @param _next - next function to pass the error
  */
-const globalErrorHandler: ErrorRequestHandler = (error, req, res, _next) => {
-  // eslint-disable-next-line no-console
-  // log the exact error and request
-  console.log(`[APP ERROR]`, {
-    // Log error details
-    endpoint: req.url,
-    method: req.method,
-    payload: JSON.stringify(req.body),
-    headers: req.headers,
-    error,
-  });
-
-  let statusCode: number = httpStatus.INTERNAL_SERVER_ERROR; // Default status code
-  let message = "Internal server error"; // Default error message
-  let errors: unknown[] | undefined; // Error details
-
-  // Handle various types of errors and respective error messages
-  if (error instanceof ApiError) {
-    statusCode = error?.statusCode;
-    message = error.message;
-  } else if (error instanceof PrismaClientKnownRequestError) {
-    message =
-      "Oops! Something went wrong with the database. Please try again in a moment.";
-  } else if (error instanceof ZodError) {
-    statusCode = httpStatus.BAD_REQUEST;
-    message = "Validation error";
-    errors = error.errors.map((e) => ({ path: e.path, error: e.message }));
-  } else if (error instanceof Error) {
-    message = error?.message;
+const globalErrorHandler: ErrorRequestHandler = (error, req, res, next) => {
+  if (res.headersSent) {
+    return next(error);
   }
 
-  // send response to client
+  // Safe logging without throwing on circular structures
+  try {
+    // eslint-disable-next-line no-console
+    console.error(`[APP ERROR]`, {
+      endpoint: req.originalUrl || req.url,
+      method: req.method,
+      message: error?.message || String(error),
+      stack: error?.stack,
+    });
+  } catch {
+    // ignore logging failure
+  }
+
+  let statusCode: number = httpStatus.INTERNAL_SERVER_ERROR;
+  let message = "Internal server error";
+  let errors: unknown[] | undefined;
+
+  // 1. ApiError or errors with custom statusCode property
+  if (error?.statusCode && typeof error.statusCode === "number") {
+    statusCode = error.statusCode;
+    message = error.message || message;
+  } else if (error?.status && typeof error.status === "number") {
+    statusCode = error.status;
+    message = error.message || message;
+  }
+  // 2. Zod Error (duck-typed for CJS bundle safety)
+  else if (error?.name === "ZodError" || error instanceof ZodError || Array.isArray(error?.errors)) {
+    statusCode = httpStatus.BAD_REQUEST;
+    message = "Validation error";
+    if (Array.isArray(error?.errors)) {
+      errors = error.errors.map((e: any) => ({
+        path: Array.isArray(e.path) ? e.path.join(".") : e.path,
+        error: e.message || String(e),
+      }));
+    }
+  }
+  // 3. Prisma Known Request Error
+  else if (error?.code && typeof error.code === "string" && error.code.startsWith("P")) {
+    statusCode = httpStatus.BAD_REQUEST;
+    message = `Database error (${error.code}): ${error.message || "Failed operation"}`;
+  }
+  // 4. Standard JavaScript Error
+  else if (error?.message) {
+    message = error.message;
+  }
+
   res.status(statusCode).json({
-    // Send error response
     success: false,
     message,
     errors,
-    stack: env.app.nodeEnv === "development" ? error?.stack : undefined, // Include stack trace in development
+    stack: env.app.nodeEnv === "development" ? error?.stack : undefined,
   });
 };
 

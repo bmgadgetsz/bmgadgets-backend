@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // Zod schema for generate otp api
 const generateOtpSchema = z.object({
-  query: z.strictObject({
+  query: z.object({
     email: z
       .string()
       .trim()
@@ -13,7 +13,7 @@ const generateOtpSchema = z.object({
 
 // zod schema for login api
 const loginSchema = z.object({
-  body: z.strictObject({
+  body: z.object({
     email: z
       .string()
       .trim()
