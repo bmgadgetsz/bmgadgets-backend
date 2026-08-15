@@ -10,8 +10,8 @@ const orderRouter = Router();
 orderRouter
   .route("/")
   .post(
-    handleAuth(),
-    checkPermission(["ORDER_MANAGEMENT"], "WRITE", { openForCustomers: true }),
+    handleAuth({ optional: true }),
+    checkPermission(["ORDER_MANAGEMENT"], "WRITE", { openForCustomers: true, optional: true }),
     validateRequest(orderValidator.createOrderSchema),
     orderController.createOrder,
   )
@@ -47,8 +47,8 @@ orderRouter.route("/:id/invoice").get(orderController.getInvoice);
 orderRouter
   .route("/:id")
   .get(
-    handleAuth(),
-    checkPermission(["ORDER_MANAGEMENT"], "READ", { openForCustomers: true }),
+    handleAuth({ optional: true }),
+    checkPermission(["ORDER_MANAGEMENT"], "READ", { openForCustomers: true, optional: true }),
     orderController.getOrderById,
   )
   .patch(

@@ -11,6 +11,20 @@ import redis from "@/config/redis";
 import { parseProductLink } from "@/utils/productLinkParser";
 import productService from "./product.service";
 
+const invalidateProductCache = async (productId?: string) => {
+  try {
+    if (productId) {
+      await redis.del(`product:${productId}`);
+    }
+    const keys = await redis.keys("products:paginated:*");
+    if (keys && keys.length > 0) {
+      await redis.del(...keys);
+    }
+  } catch (err) {
+    // Quiet error handling for cache invalidation
+  }
+};
+
 const createProduct = catchAsync(async (req, res, next) => {
   const data = req.body;
   const currentUser = res.locals.currentUser as User & { role: Role };
@@ -78,6 +92,8 @@ const createProduct = catchAsync(async (req, res, next) => {
     else next(error);
   }
 
+  invalidateProductCache(response?.id).catch(() => {});
+
   res.status(httpStatus.CREATED).json({
     success: true,
     message: "Product created successfully",
@@ -100,6 +116,8 @@ const createManyProducts = catchAsync(async (req, res, next) => {
     else next(error);
   }
 
+  invalidateProductCache().catch(() => {});
+
   res.status(httpStatus.CREATED).json({
     success: true,
     message: "Products created successfully",
@@ -109,7 +127,24 @@ const createManyProducts = catchAsync(async (req, res, next) => {
 
 const getProductById = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const response = await productService.getProductById(id);
+  const cacheKey = `product:${id}`;
+
+  let response;
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      response = JSON.parse(cached);
+    }
+  } catch (err) {
+    // Quiet fallback if Redis is unreachable
+  }
+
+  if (!response) {
+    response = await productService.getProductById(id);
+    if (response) {
+      redis.set(cacheKey, JSON.stringify(response), "EX", 300).catch(() => {});
+    }
+  }
 
   res.status(httpStatus.OK).json({
     success: true,
@@ -148,7 +183,24 @@ const getPaginatedProducts = catchAsync(async (req, res) => {
 
   const options = pick(req.query, ["sort_by", "sort_order", "limit", "page"]);
 
-  const response = await productService.getPaginatedProducts(filters, options);
+  const cacheKey = `products:paginated:${JSON.stringify({ filters, options })}`;
+  let response;
+
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      response = JSON.parse(cached);
+    }
+  } catch (err) {
+    // Quiet fallback if Redis is unreachable
+  }
+
+  if (!response) {
+    response = await productService.getPaginatedProducts(filters, options);
+    if (response) {
+      redis.set(cacheKey, JSON.stringify(response), "EX", 60).catch(() => {});
+    }
+  }
 
   res.status(httpStatus.OK).json({
     success: true,
@@ -246,6 +298,7 @@ const updateProduct = catchAsync(async (req, res) => {
   }
 
   const response = await productService.updateProduct(id, data);
+  invalidateProductCache(id).catch(() => {});
 
   res.status(httpStatus.OK).json({
     success: true,
@@ -277,6 +330,8 @@ const deleteProduct = catchAsync(async (req, res) => {
       );
     throw error;
   }
+
+  invalidateProductCache(id).catch(() => {});
 
   res.status(httpStatus.OK).json({
     success: true,
@@ -446,7 +501,20 @@ const updateProductStatus = catchAsync(async (req, res) => {
 
 const getProductStatsHandler = catchAsync(async (req, res) => {
   const { period = "Weekly" } = req.query; // default to Weekly if not provided
-  const data = await productService.getProductStats(period as Period);
+  const cacheKey = `product_stats:${period}`;
+  let data;
+
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) data = JSON.parse(cached);
+  } catch (err) {
+    // Quiet fallback if Redis unavailable
+  }
+
+  if (!data) {
+    data = await productService.getProductStats(period as Period);
+    if (data) redis.set(cacheKey, JSON.stringify(data), "EX", 300).catch(() => {});
+  }
 
   res.status(httpStatus.OK).json({
     success: true,
@@ -454,10 +522,25 @@ const getProductStatsHandler = catchAsync(async (req, res) => {
     data,
   });
 });
+
 const getTopCategoriesHandler = catchAsync(async (req, res) => {
   const limit = Number(req.query.limit ?? 5);
   const period = (req.query.period as any) ?? "Weekly";
-  const data = await productService.getTopCategories(limit, period);
+  const cacheKey = `top_categories:${limit}:${period}`;
+  let data;
+
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) data = JSON.parse(cached);
+  } catch (err) {
+    // Quiet fallback
+  }
+
+  if (!data) {
+    data = await productService.getTopCategories(limit, period);
+    if (data) redis.set(cacheKey, JSON.stringify(data), "EX", 600).catch(() => {});
+  }
+
   res.status(httpStatus.OK).json({
     success: true,
     message: "Top categories fetched successfully",
@@ -468,7 +551,21 @@ const getTopCategoriesHandler = catchAsync(async (req, res) => {
 const getTopProductsHandler = catchAsync(async (req, res) => {
   const limit = Number(req.query.limit ?? 5);
   const period = (req.query.period as any) ?? "Weekly";
-  const data = await productService.getTopProducts(limit, period);
+  const cacheKey = `top_products:${limit}:${period}`;
+  let data;
+
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) data = JSON.parse(cached);
+  } catch (err) {
+    // Quiet fallback
+  }
+
+  if (!data) {
+    data = await productService.getTopProducts(limit, period);
+    if (data) redis.set(cacheKey, JSON.stringify(data), "EX", 600).catch(() => {});
+  }
+
   res.status(httpStatus.OK).json({
     success: true,
     message: "Top products fetched successfully",

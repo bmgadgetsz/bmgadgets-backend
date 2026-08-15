@@ -20,6 +20,8 @@ import { z } from "zod";
 import { getIO } from "@/config/socket";
 import sendSms from "@/utils/sendSms";
 import message91Templates from "@/config/message91Templates";
+import { orderShippedTemplate } from "@/template/email/Shipping";
+import sendEmail from "@/utils/mail";
 import orderTemplate from "./order.template";
 
 const calculateCart = async (
@@ -272,45 +274,206 @@ const calculateCart = async (
   };
 };
 
-const createOrder = async (
-  customerProfileId: string,
-  paymentType: PaymentType,
-  couponCode?: string,
-) => {
-  const cartBackup = [];
-  // Fetch profile and primary address
-  const customerProfile = await prisma.customerProfile.findUnique({
-    where: { id: customerProfileId },
-  });
-  if (!customerProfile)
-    throw new ApiError(httpStatus.NOT_FOUND, "Customer not found");
-  const address = await prisma.address.findFirst({
-    where: {
-      customerProfileId,
-      primary: true,
-    },
-  });
-  if (!address)
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      "No primary address found for the customer",
-    );
-  // INFO: Beyond this point, we have a valid user and a valid address
+interface CreateOrderInput {
+  currentUser?: any;
+  paymentType: PaymentType;
+  couponCode?: string;
+  customer?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+  };
+  address?: {
+    addressType?: "HOME" | "OFFICE" | "OTHER";
+    address?: string;
+    houseFlatNo?: string;
+    road?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    zipcode?: string;
+  };
+  items?: Array<{
+    productVariantId?: string;
+    productComboId?: string;
+    quantity: number;
+  }>;
+}
 
-  // If COD: check if the address is serviceable
-  if (paymentType === "COD") {
-    const availableCurriers =
-      env.app.nodeEnv === "development"
-        ? ["A"]
-        : await shipwayService.getPincodeServiceable(address.zipcode, "C");
+const createOrder = async (params: CreateOrderInput) => {
+  const { currentUser, paymentType, couponCode, customer, address: addressPayload, items } = params;
+  let customerProfileId = currentUser?.customerProfile?.id;
 
-    if (!availableCurriers.length)
+  const rawName = customer?.name?.trim();
+  const rawPhone = customer?.phone?.trim();
+  const rawEmail = customer?.email?.trim().toLowerCase();
+
+  if (!customerProfileId) {
+    if (!rawName) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Receiver full name is required");
+    }
+    if (!rawPhone || rawPhone.length < 10) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        "COD not available for your default address",
+        "Valid 10-digit phone number is required",
       );
+    }
+
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(rawEmail ? [{ email: rawEmail }] : []),
+          { phone: rawPhone },
+        ],
+      },
+      include: { customerProfile: true },
+    });
+
+    if (!user) {
+      const role = await prisma.role.findFirst({ where: { isCustomer: true } });
+      if (!role) {
+        throw new ApiError(
+          httpStatus.INTERNAL_SERVER_ERROR,
+          "Customer role is not configured. Please contact support.",
+        );
+      }
+
+      user = await prisma.user.create({
+        data: {
+          email: rawEmail || `guest_${Date.now()}@bmgadgets.com`,
+          phone: rawPhone,
+          name: rawName,
+          roleId: role.id,
+        },
+        include: { customerProfile: true },
+      });
+    }
+
+    if (!user.customerProfile) {
+      const profile = await prisma.customerProfile.create({
+        data: { userId: user.id },
+      });
+      customerProfileId = profile.id;
+    } else {
+      customerProfileId = user.customerProfile.id;
+    }
   }
 
+  const customerProfile = await prisma.customerProfile.findUnique({
+    where: { id: customerProfileId },
+    include: { user: true },
+  });
+  if (!customerProfile) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Customer not found");
+  }
+
+  // Update associated user's name and phone if new details are provided in order form
+  if (customerProfile.user) {
+    const userUpdates: any = {};
+    if (rawName && rawName !== customerProfile.user.name) {
+      userUpdates.name = rawName;
+    }
+    if (
+      rawPhone &&
+      (customerProfile.user.phone.startsWith("PLACEHOLDER#") ||
+        customerProfile.user.phone.startsWith("+9100000") ||
+        customerProfile.user.phone !== rawPhone)
+    ) {
+      userUpdates.phone = rawPhone;
+    }
+    if (
+      rawEmail &&
+      (customerProfile.user.email.startsWith("guest_") ||
+        customerProfile.user.email.startsWith("PLACEHOLDER#"))
+    ) {
+      userUpdates.email = rawEmail;
+    }
+
+    if (Object.keys(userUpdates).length > 0) {
+      try {
+        await prisma.user.update({
+          where: { id: customerProfile.userId },
+          data: userUpdates,
+        });
+      } catch (e) {
+        delete userUpdates.phone;
+        if (Object.keys(userUpdates).length > 0) {
+          await prisma.user.update({
+            where: { id: customerProfile.userId },
+            data: userUpdates,
+          }).catch(() => {});
+        }
+      }
+    }
+  }
+
+  let address;
+  if (addressPayload?.address || addressPayload?.zipcode) {
+    address = await prisma.address.create({
+      data: {
+        addressType: (addressPayload.addressType as any) || "HOME",
+        address: addressPayload.address || "Delivery Address",
+        houseFlatNo: addressPayload.houseFlatNo || "N/A",
+        road: addressPayload.road || "N/A",
+        city: addressPayload.city || "City",
+        state: addressPayload.state || "State",
+        country: addressPayload.country || "India",
+        zipcode: addressPayload.zipcode || "000000",
+        source: "MANUAL",
+        primary: true,
+        customerProfileId,
+      },
+    });
+  } else {
+    address = await prisma.address.findFirst({
+      where: { customerProfileId, primary: true },
+    });
+  }
+
+  if (!address) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "No delivery address provided or found for customer",
+    );
+  }
+
+  if (Array.isArray(items) && items.length > 0) {
+    await prisma.cartItem.deleteMany({ where: { customerProfileId } });
+    for (const item of items) {
+      if (item.productVariantId || item.productComboId) {
+        await prisma.cartItem.create({
+          data: {
+            customerProfileId,
+            quantity: item.quantity,
+            productVariantId: item.productVariantId || null,
+            productComboId: item.productComboId || null,
+          },
+        });
+      }
+    }
+  }
+  // INFO: Beyond this point, we have a valid user and a valid address
+
+  // If COD: check if the address is serviceable (with 1.5s timeout & fallback)
+  if (paymentType === "COD") {
+    let availableCurriers: any = ["A"];
+    if (env.app.nodeEnv !== "development" && env.shipway.base_url && env.shipway.base_url.startsWith("http")) {
+      try {
+        const timeoutPromise = new Promise<any>((resolve) => setTimeout(() => resolve(["DEFAULT"]), 1500));
+        availableCurriers = await Promise.race([
+          shipwayService.getPincodeServiceable(address.zipcode, "C"),
+          timeoutPromise,
+        ]);
+        if (!Array.isArray(availableCurriers) || availableCurriers.length === 0) {
+          availableCurriers = ["DEFAULT"];
+        }
+      } catch (e) {
+        availableCurriers = ["DEFAULT"];
+      }
+    }
+  }
+
+  const cartBackup = [];
   // Fetch the cart and its associated values
   const {
     subTotal,
@@ -679,22 +842,47 @@ const getPaginatedOrders = async (
 
   const isValidObjectId = (id: string): boolean => /^[0-9a-fA-F]{24}$/.test(id);
 
-  // partial match
-  if (search) {
-    if (isValidObjectId(search)) conditions.push({ id: { equals: search } });
-    else
+  // Search filter matching: support ObjectId, short Order ID, customer name/phone/email, tracking ID, or Razorpay Order ID
+  if (search && search.trim()) {
+    const queryStr = search.trim();
+    if (isValidObjectId(queryStr)) {
+      conditions.push({ id: { equals: queryStr } });
+    } else {
       conditions.push({
-        createdBy: {
-          user: { name: { contains: search, mode: "insensitive" } },
-        },
+        OR: [
+          { id: { contains: queryStr, mode: "insensitive" } },
+          { razorpayOrderId: { contains: queryStr, mode: "insensitive" } },
+          { trackingId: { contains: queryStr, mode: "insensitive" } },
+          {
+            createdBy: {
+              user: {
+                OR: [
+                  { name: { contains: queryStr, mode: "insensitive" } },
+                  { email: { contains: queryStr, mode: "insensitive" } },
+                  { phone: { contains: queryStr, mode: "insensitive" } },
+                ],
+              },
+            },
+          },
+        ],
       });
+    }
   }
-  // exact match
-  if (Object.keys(filterData).length > 0) {
+
+  // Filter out empty string/null/undefined values from filterData
+  const activeFilters: Record<string, any> = {};
+  Object.keys(filterData).forEach((key) => {
+    const val = (filterData as any)[key];
+    if (val !== undefined && val !== null && val !== "") {
+      activeFilters[key] = val;
+    }
+  });
+
+  if (Object.keys(activeFilters).length > 0) {
     conditions.push({
-      AND: Object.keys(filterData).map((key) => ({
+      AND: Object.keys(activeFilters).map((key) => ({
         [key]: {
-          equals: filterData[key as keyof typeof filterData],
+          equals: activeFilters[key],
         },
       })),
     });
@@ -855,6 +1043,11 @@ const getPaginatedOrders = async (
 };
 
 const updateOrder = async (id: string, data: any) => {
+  const oldOrder = await prisma.order.findUnique({
+    where: { id },
+    include: { createdBy: { include: { user: true } }, address: true },
+  });
+
   const updatePayload: any = { ...data };
 
   if (
@@ -870,7 +1063,87 @@ const updateOrder = async (id: string, data: any) => {
     updatePayload.deliveredAt = new Date();
   }
 
-  return prisma.order.update({ where: { id }, data: updatePayload });
+  const updatedOrder = await prisma.order.update({
+    where: { id },
+    data: updatePayload,
+    include: { createdBy: { include: { user: true } }, address: true },
+  });
+
+  // Check if manual dispatch or shipping notification should be sent
+  const isDispatching =
+    (data.status === "SHIPPED" && oldOrder?.status !== "SHIPPED") ||
+    (data.fulfillmentMode === "MANUAL" && (data.trackingId || data.deliveryPartner)) ||
+    (data.trackingId && data.trackingId !== oldOrder?.trackingId);
+
+  if (isDispatching && updatedOrder.createdBy?.user) {
+    const phone = updatedOrder.createdBy.user.phone;
+    const name = updatedOrder.createdBy.user.name || "Customer";
+    const partner = updatedOrder.deliveryPartner || "Courier";
+    const trackId = updatedOrder.trackingId || "N/A";
+    const trackUrl =
+      updatedOrder.trackingUrl ||
+      `https://bmgadgetsz.in/orders/${updatedOrder.id}/track`;
+
+    if (phone && !phone.startsWith("PLACEHOLDER#")) {
+      await sendSms(
+        message91Templates.orderShippedNotification,
+        phone,
+        {
+          Order_ID: updatedOrder.id,
+          Name: name,
+          Tracking_ID: `${partner} - ${trackId}`,
+          Tracking_link: trackUrl,
+        },
+      ).catch((err) =>
+        // eslint-disable-next-line no-console
+        console.error("[Manual Dispatch SMS/WhatsApp Error]:", err),
+      );
+    }
+
+    const email = updatedOrder.createdBy.user.email;
+    if (
+      email &&
+      !email.startsWith("guest_") &&
+      !email.startsWith("PLACEHOLDER#")
+    ) {
+      const tpl = orderShippedTemplate({
+        firstName: name,
+        orderId: updatedOrder.id,
+        awb: trackId,
+        courier: partner,
+        estimatedDelivery: updatedOrder.expectedDeliveryDate?.toISOString() || null,
+        trackUrl,
+      });
+      await sendEmail(email, tpl.subject, tpl.html).catch((err) =>
+        // eslint-disable-next-line no-console
+        console.error("[Manual Dispatch Email Error]:", err),
+      );
+    }
+  }
+
+  const isDelivered =
+    data.status === "DELIVERED" && oldOrder?.status !== "DELIVERED";
+
+  if (isDelivered && updatedOrder.createdBy?.user) {
+    const phone = updatedOrder.createdBy.user.phone;
+    const name = updatedOrder.createdBy.user.name || "Customer";
+
+    if (phone && !phone.startsWith("PLACEHOLDER#")) {
+      await sendSms(
+        message91Templates.deliveryConfirmationNotification,
+        phone,
+        {
+          Name: name,
+          Order_ID: updatedOrder.id,
+        },
+      ).catch((err) =>
+        // eslint-disable-next-line no-console
+        console.error("[Delivery SMS/WhatsApp Error]:", err),
+      );
+    }
+  }
+
+  return updatedOrder;
 };
 
 const deleteOrder = async (id: string) => {

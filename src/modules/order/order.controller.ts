@@ -18,14 +18,17 @@ import orderService from "./order.service";
 import orderTemplate from "./order.template";
 
 const createOrder = catchAsync(async (req, res) => {
-  const createdById = res.locals.currentUser.customerProfile.id;
-  const { couponCode, paymentType } = req.body;
+  const currentUser = res.locals.currentUser;
+  const { couponCode, paymentType, customer, address, items } = req.body;
 
-  const response = await orderService.createOrder(
-    createdById,
+  const response = await orderService.createOrder({
+    currentUser,
     paymentType,
     couponCode,
-  );
+    customer,
+    address,
+    items,
+  });
 
   res.status(httpStatus.CREATED).json({
     success: true,

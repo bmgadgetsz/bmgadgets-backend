@@ -19,6 +19,7 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
@@ -52,6 +53,7 @@
     "bson": "^6.10.4",
     "bullmq": "^5.58.5",
     "cheerio": "^1.2.0",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",

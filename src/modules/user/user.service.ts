@@ -713,14 +713,19 @@ const createAddress = async (
     const existingAddresses = await tx.address.findMany({
       where: { customerProfileId: customerProfile.id, active: true },
     });
-    if (existingAddresses.length < 1) rest.primary = true;
-    if (customerProfile.addresses.length > 0) rest.primary = false;
 
-    if (data.primary)
+    const isFirstAddress = existingAddresses.length === 0;
+    const shouldBePrimary = isFirstAddress || data.primary === true;
+
+    if (shouldBePrimary) {
+      rest.primary = true;
       await tx.address.updateMany({
         where: { customerProfileId: customerProfile.id },
         data: { primary: false },
       });
+    } else {
+      rest.primary = false;
+    }
 
     return tx.address.create({
       data: { ...rest, customerProfileId: customerProfile.id },

@@ -14,15 +14,18 @@ const checkPermission = (
   {
     openForCustomers,
     openForVendors,
-  }: { openForCustomers?: boolean; openForVendors?: boolean } = {},
+    optional,
+  }: { openForCustomers?: boolean; openForVendors?: boolean; optional?: boolean } = {},
 ): RequestHandler => {
   return async (_req, res, next) => {
     try {
       const user = res.locals.currentUser; // Retrieve the current user from response locals
 
-      if (!user)
+      if (!user) {
+        if (optional) return next();
         // Check if user exists
         throw new ApiError(httpStatus.UNAUTHORIZED, "User not authenticated");
+      }
 
       const { role }: { role: Role } = res.locals.currentUser; // Extract role from user
 

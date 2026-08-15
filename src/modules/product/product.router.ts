@@ -2,15 +2,16 @@ import validateRequest from "@/middleware/validateRequest";
 import { Router } from "express";
 import handleAuth from "@/middleware/handleAuth";
 import checkPermission from "@/middleware/checkPermission";
+import cacheControl from "@/middleware/cacheControl";
 import { productValidator } from "./product.validator";
 import productController from "./product.controller";
 
 const productRouter = Router();
 
-productRouter.get("/stats", productController.getProductStatsHandler);
-productRouter.get("/top-categories", productController.getTopCategoriesHandler);
-productRouter.get("/top-products", productController.getTopProductsHandler);
-productRouter.get("/low-stock", productController.getLowStockHandler);
+productRouter.get("/stats", cacheControl(60, 300), productController.getProductStatsHandler);
+productRouter.get("/top-categories", cacheControl(300, 600), productController.getTopCategoriesHandler);
+productRouter.get("/top-products", cacheControl(300, 600), productController.getTopProductsHandler);
+productRouter.get("/low-stock", cacheControl(60, 300), productController.getLowStockHandler);
 productRouter.post(
   "/parse-link",
   handleAuth(),
@@ -28,11 +29,13 @@ productRouter
   )
   .get(
     // public route
+    cacheControl(30, 120),
     productController.getPaginatedProducts,
   );
 
 productRouter.get(
   "/search-suggestions",
+  cacheControl(300, 600),
   productController.getSearchSuggestions,
 );
 
@@ -49,6 +52,7 @@ productRouter
   .route("/:id")
   .get(
     // public route
+    cacheControl(60, 300),
     productController.getProductById,
   )
   .patch(

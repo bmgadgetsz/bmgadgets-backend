@@ -9,8 +9,17 @@ import v1Router from "./routes/v1";
 import corsConfig from "./config/cors";
 import globalErrorHandler from "./middleware/globalErrorHandler";
 
+import compression from "compression";
+
 const app = express();
 app.set("trust proxy", 1);
+
+// Compress all response bodies (Gzip/Brotli) to reduce network payload size
+app.use(
+  compression({
+    threshold: 1024, // Compress responses larger than 1KB
+  }),
+);
 
 app.use(
   helmet({

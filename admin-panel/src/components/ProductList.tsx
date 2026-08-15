@@ -26,7 +26,12 @@ import {
   Wand2,
   Zap,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 
 
@@ -61,6 +66,11 @@ export const ProductList: React.FC = () => {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [totalProducts, setTotalProducts] = useState(0);
   
   // Selection/Modals
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
@@ -202,12 +212,24 @@ export const ProductList: React.FC = () => {
         search: search || undefined,
         categoryId: categoryFilter || undefined,
         isAdmin: 'true',
+        page,
+        limit,
       };
       if (statusFilter === 'active') params.active = 'true';
       if (statusFilter === 'inactive') params.active = 'false';
 
       const res: any = await api.get('/products', { params });
-      setProducts(res.data?.data || res.data || []);
+      const payload = res.data;
+      if (payload && Array.isArray(payload.data)) {
+        setProducts(payload.data);
+        setTotalProducts(payload.meta?.total ?? payload.data.length);
+      } else if (Array.isArray(res.data)) {
+        setProducts(res.data);
+        setTotalProducts(res.data.length);
+      } else {
+        setProducts([]);
+        setTotalProducts(0);
+      }
     } catch (err: any) {
       setMessage(err.message);
     } finally {
@@ -416,13 +438,18 @@ export const ProductList: React.FC = () => {
     fetchMetadata();
   }, []);
 
+  // Reset to page 1 on filter, search, or limit change
+  useEffect(() => {
+    setPage(1);
+  }, [search, categoryFilter, statusFilter, limit]);
+
   useEffect(() => {
     if (subTab === 'combos') {
       fetchCombos();
-    } else {
+    } else if (subTab === 'catalog') {
       fetchProducts();
     }
-  }, [subTab, search, categoryFilter, statusFilter]);
+  }, [subTab, search, categoryFilter, statusFilter, page, limit]);
 
   const handleFetchProductFromLink = async () => {
     if (!pastedLink || !pastedLink.trim()) {
@@ -1051,17 +1078,30 @@ export const ProductList: React.FC = () => {
           {/* Filters & Actions bar */}
           <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
             <div className="flex flex-col sm:flex-row gap-3 flex-1">
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search catalog products..."
-                className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs outline-none focus:ring-2 focus:ring-primary flex-1"
-              />
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search catalog products..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-9 py-2.5 text-xs outline-none focus:ring-2 focus:ring-primary focus:bg-white transition-all"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200 transition-all"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 outline-none"
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-primary transition-all cursor-pointer"
               >
                 <option value="">All Categories</option>
                 {categories.map((c: any) => (
@@ -1071,7 +1111,7 @@ export const ProductList: React.FC = () => {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 outline-none"
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-primary transition-all cursor-pointer"
               >
                 <option value="">All Statuses</option>
                 <option value="active">Active Only</option>
@@ -1080,7 +1120,7 @@ export const ProductList: React.FC = () => {
             </div>
             <button 
               onClick={openAddModal}
-              className="bg-primary hover:bg-primary-dark text-white font-bold py-2.5 px-5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all"
+              className="bg-primary hover:bg-primary-dark text-white font-bold py-2.5 px-5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all shrink-0"
             >
               <Plus className="w-4 h-4" />
               Add Product
@@ -1102,103 +1142,215 @@ export const ProductList: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {products.map((prod) => (
-                    <tr key={prod.id} onClick={() => { setSelectedProduct(prod); setShowDetailsModal(true); }} className="hover:bg-slate-50/40 cursor-pointer transition-all">
-                      <td className="px-6 py-4">
-                        <img 
-                          src={prod.thumbnailImageUrl || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=80'} 
-                          alt="" 
-                          className="w-12 h-12 object-cover rounded-lg border"
-                        />
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-slate-800">{prod.name}</span>
-                          {prod.isFlashDeal && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-extrabold shadow-sm">
-                              <Zap className="w-3 h-3 text-amber-500 fill-amber-500 animate-bounce" />
-                              Flash Deal
-                            </span>
-                          )}
-                          {prod.featured && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-[10px] font-extrabold shadow-sm">
-                              <Star className="w-3 h-3 text-blue-500 fill-blue-500" />
-                              Featured
-                            </span>
-                          )}
+                  {loading && products.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                        <div className="flex items-center justify-center gap-2">
+                          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                          <span>Loading catalog products...</span>
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">{prod.id}</div>
-                      </td>
-                      <td className="px-6 py-4 text-slate-500 font-semibold">
-                        {prod.varients?.[0]?.variant?.subCategory?.category?.name || prod.brand?.name || 'Unassigned'}
-                      </td>
-
-                      {/* Analytics Column */}
-                      <td className="px-6 py-4">
-                        {prod._analytics ? (
-                          <div className="flex flex-col gap-1.5">
-                            {/* Best Seller Badge */}
-                            {prod._analytics.isBestSeller && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-extrabold w-fit">
-                                <Award className="w-3 h-3" />
-                                Best Seller
-                              </span>
-                            )}
-                            <div className="flex flex-wrap gap-x-3 gap-y-1">
-                              {/* Orders */}
-                              <span className="flex items-center gap-1 text-[10px] font-bold text-slate-600" title="Total Orders Placed">
-                                <ShoppingCart className="w-3 h-3 text-emerald-500" />
-                                {prod._analytics.orderCount}
-                              </span>
-                              {/* Page Views */}
-                              <span className="flex items-center gap-1 text-[10px] font-bold text-slate-600" title="Product Page Views">
-                                <Eye className="w-3 h-3 text-blue-400" />
-                                {prod._analytics.visitCount}
-                              </span>
-                              {/* Avg Rating */}
-                              <span className="flex items-center gap-1 text-[10px] font-bold text-slate-600" title={`Avg Rating (${prod._analytics.reviewCount} reviews)`}>
-                                <Star className="w-3 h-3 text-amber-400" />
-                                {prod._analytics.avgRating > 0 ? prod._analytics.avgRating.toFixed(1) : '—'}
-                                <span className="text-slate-400 font-normal">({prod._analytics.reviewCount})</span>
-                              </span>
-                              {/* Return Requests */}
-                              {prod._analytics.returnRequestCount > 0 && (
-                                <span className="flex items-center gap-1 text-[10px] font-bold text-rose-600" title="Return Requests">
-                                  <RotateCcw className="w-3 h-3" />
-                                  {prod._analytics.returnRequestCount}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-[10px] text-slate-300 font-medium italic">—</span>
-                        )}
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${
-                          prod.active 
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                            : 'bg-slate-100 text-slate-500 border-slate-200'
-                        }`}>
-                          <span className={`w-2 h-2 rounded-full ${prod.active ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                          {prod.active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
-                          getProductTotalStock(prod) > 5 ? 'bg-blue-50 text-blue-700 border border-blue-100' :
-                          getProductTotalStock(prod) > 0 ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                          'bg-rose-50 text-rose-600 border border-rose-100'
-                        }`}>
-                          {getProductTotalStock(prod)} units
-                        </span>
                       </td>
                     </tr>
-                  ))}
+                  ) : products.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400 bg-slate-50/50">
+                        <Box className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                        <p className="font-bold text-slate-700 text-sm">No Catalog Products Found</p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          {search || categoryFilter || statusFilter
+                            ? 'No products match your current search and filter criteria.'
+                            : 'Click "Add Product" above to create your first product.'}
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    products.map((prod) => (
+                      <tr key={prod.id} onClick={() => { setSelectedProduct(prod); setShowDetailsModal(true); }} className="hover:bg-slate-50/40 cursor-pointer transition-all">
+                        <td className="px-6 py-4">
+                          <img 
+                            src={prod.thumbnailImageUrl || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=80'} 
+                            alt="" 
+                            className="w-12 h-12 object-cover rounded-lg border"
+                          />
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-800">{prod.name}</span>
+                            {prod.isFlashDeal && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-extrabold shadow-sm">
+                                <Zap className="w-3 h-3 text-amber-500 fill-amber-500 animate-bounce" />
+                                Flash Deal
+                              </span>
+                            )}
+                            {prod.featured && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-[10px] font-extrabold shadow-sm">
+                                <Star className="w-3 h-3 text-blue-500 fill-blue-500" />
+                                Featured
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">{prod.id}</div>
+                        </td>
+                        <td className="px-6 py-4 text-slate-500 font-semibold">
+                          {prod.varients?.[0]?.variant?.subCategory?.category?.name || prod.brand?.name || 'Unassigned'}
+                        </td>
+
+                        {/* Analytics Column */}
+                        <td className="px-6 py-4">
+                          {prod._analytics ? (
+                            <div className="flex flex-col gap-1.5">
+                              {/* Best Seller Badge */}
+                              {prod._analytics.isBestSeller && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-extrabold w-fit">
+                                  <Award className="w-3 h-3" />
+                                  Best Seller
+                                </span>
+                              )}
+                              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                {/* Orders */}
+                                <span className="flex items-center gap-1 text-[10px] font-bold text-slate-600" title="Total Orders Placed">
+                                  <ShoppingCart className="w-3 h-3 text-emerald-500" />
+                                  {prod._analytics.orderCount}
+                                </span>
+                                {/* Page Views */}
+                                <span className="flex items-center gap-1 text-[10px] font-bold text-slate-600" title="Product Page Views">
+                                  <Eye className="w-3 h-3 text-blue-400" />
+                                  {prod._analytics.visitCount}
+                                </span>
+                                {/* Avg Rating */}
+                                <span className="flex items-center gap-1 text-[10px] font-bold text-slate-600" title={`Avg Rating (${prod._analytics.reviewCount} reviews)`}>
+                                  <Star className="w-3 h-3 text-amber-400" />
+                                  {prod._analytics.avgRating > 0 ? prod._analytics.avgRating.toFixed(1) : '—'}
+                                  <span className="text-slate-400 font-normal">({prod._analytics.reviewCount})</span>
+                                </span>
+                                {/* Return Requests */}
+                                {prod._analytics.returnRequestCount > 0 && (
+                                  <span className="flex items-center gap-1 text-[10px] font-bold text-rose-600" title="Return Requests">
+                                    <RotateCcw className="w-3 h-3" />
+                                    {prod._analytics.returnRequestCount}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-300 font-medium italic">—</span>
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${
+                            prod.active 
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                              : 'bg-slate-100 text-slate-500 border-slate-200'
+                          }`}>
+                            <span className={`w-2 h-2 rounded-full ${prod.active ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                            {prod.active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+                            getProductTotalStock(prod) > 5 ? 'bg-blue-50 text-blue-700 border border-blue-100' :
+                            getProductTotalStock(prod) > 0 ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                            'bg-rose-50 text-rose-600 border border-rose-100'
+                          }`}>
+                            {getProductTotalStock(prod)} units
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Catalog Pagination Footer */}
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 px-6 py-4 bg-slate-50/70 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 font-medium">
+                <span>
+                  Showing <strong className="text-slate-800">{totalProducts > 0 ? (page - 1) * limit + 1 : 0}</strong> to{' '}
+                  <strong className="text-slate-800">{Math.min(page * limit, totalProducts)}</strong> of{' '}
+                  <strong className="text-slate-800">{totalProducts}</strong> products
+                </span>
+                <div className="flex items-center gap-2">
+                  <label className="text-slate-400 font-semibold text-[11px]">Per page:</label>
+                  <select
+                    value={limit}
+                    onChange={(e) => setLimit(Number(e.target.value))}
+                    className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-primary shadow-sm cursor-pointer"
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Pagination Controls */}
+              {Math.ceil(totalProducts / limit) > 1 && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    disabled={page <= 1 || loading}
+                    onClick={() => setPage(1)}
+                    className="p-2 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition shadow-sm"
+                    title="First Page"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    disabled={page <= 1 || loading}
+                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition text-xs font-bold shadow-sm flex items-center gap-1"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    <span>Prev</span>
+                  </button>
+
+                  {/* Numeric Page Buttons */}
+                  <div className="flex items-center gap-1 px-1">
+                    {Array.from({ length: Math.ceil(totalProducts / limit) }, (_, i) => i + 1)
+                      .filter((pNum) => pNum === 1 || pNum === Math.ceil(totalProducts / limit) || Math.abs(pNum - page) <= 1)
+                      .map((pNum, idx, arr) => {
+                        const prevNum = arr[idx - 1];
+                        const showEllipsis = prevNum && pNum - prevNum > 1;
+                        return (
+                          <React.Fragment key={pNum}>
+                            {showEllipsis && <span className="px-1 text-slate-400 font-bold text-xs">...</span>}
+                            <button
+                              onClick={() => setPage(pNum)}
+                              disabled={loading}
+                              className={`min-w-8 h-8 px-2 rounded-xl text-xs font-extrabold transition-all shadow-sm ${
+                                page === pNum
+                                  ? 'bg-primary text-white shadow-primary/20'
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {pNum}
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
+                  </div>
+
+                  <button
+                    disabled={page >= Math.ceil(totalProducts / limit) || loading}
+                    onClick={() => setPage((prev) => Math.min(Math.ceil(totalProducts / limit), prev + 1))}
+                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition text-xs font-bold shadow-sm flex items-center gap-1"
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    disabled={page >= Math.ceil(totalProducts / limit) || loading}
+                    onClick={() => setPage(Math.ceil(totalProducts / limit))}
+                    className="p-2 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition shadow-sm"
+                    title="Last Page"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1251,25 +1403,75 @@ export const ProductList: React.FC = () => {
       {/* 1. Create/Edit Product Modal */}
       {showProductModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowProductModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden z-10 flex flex-col p-6 animate-fade-in">
+          <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md" onClick={() => setShowProductModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[92vh] overflow-hidden z-10 flex flex-col animate-fade-in">
             
-            {/* Header */}
-            <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-4">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-800">
-                  {selectedProduct ? 'Edit Catalog Product' : 'Add New Catalog Product'}
-                </h3>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  {selectedProduct ? `Product ID: ${selectedProduct.id}` : 'Fill in the information below to list a new catalog item'}
-                </p>
+            {/* Sticky Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between z-30 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-extrabold shrink-0 shadow-2xs">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black text-slate-900">
+                      {selectedProduct ? "Edit Catalog Product" : "Add New Catalog Product"}
+                    </h3>
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200 uppercase tracking-wider">
+                      {selectedProduct ? "UPDATE" : "NEW"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 font-medium mt-0.5">
+                    {selectedProduct ? `Product ID: ${selectedProduct.id}` : "Fill in product details, images, certifications and variants below"}
+                  </p>
+                </div>
               </div>
               <button 
                 type="button" 
                 onClick={() => setShowProductModal(false)} 
-                className="p-1 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-all"
+                className="p-2 bg-slate-100 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-200 transition-all cursor-pointer"
+                title="Close modal"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick-Jump Section Navigation Bar */}
+            <div className="bg-slate-50/80 border-b border-slate-100 px-6 py-2 flex items-center gap-2 overflow-x-auto text-[11px] font-bold shrink-0 scrollbar-none">
+              <button
+                type="button"
+                onClick={() => document.getElementById("section-basic")?.scrollIntoView({ behavior: "smooth" })}
+                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200/80 hover:border-indigo-500 text-slate-700 hover:text-indigo-600 shadow-2xs transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+              >
+                <Info className="w-3.5 h-3.5 text-indigo-500" /> 1. Basic Info
+              </button>
+              <button
+                type="button"
+                onClick={() => document.getElementById("section-media")?.scrollIntoView({ behavior: "smooth" })}
+                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200/80 hover:border-indigo-500 text-slate-700 hover:text-indigo-600 shadow-2xs transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+              >
+                <ImageIcon className="w-3.5 h-3.5 text-indigo-500" /> 2. Media & Images
+              </button>
+              <button
+                type="button"
+                onClick={() => document.getElementById("section-specs")?.scrollIntoView({ behavior: "smooth" })}
+                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200/80 hover:border-indigo-500 text-slate-700 hover:text-indigo-600 shadow-2xs transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5 text-indigo-500" /> 3. Specs & Care
+              </button>
+              <button
+                type="button"
+                onClick={() => document.getElementById("section-certs")?.scrollIntoView({ behavior: "smooth" })}
+                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200/80 hover:border-indigo-500 text-slate-700 hover:text-indigo-600 shadow-2xs transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+              >
+                <Award className="w-3.5 h-3.5 text-indigo-500" /> 4. Certifications
+              </button>
+              <button
+                type="button"
+                onClick={() => document.getElementById("section-variants")?.scrollIntoView({ behavior: "smooth" })}
+                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200/80 hover:border-indigo-500 text-slate-700 hover:text-indigo-600 shadow-2xs transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+              >
+                <Layers className="w-3.5 h-3.5 text-indigo-500" /> 5. Pricing & Variants
               </button>
             </div>
 
@@ -1282,7 +1484,7 @@ export const ProductList: React.FC = () => {
             )}
 
             {/* Modal Content Scroll Area Form */}
-            <form onSubmit={handleSaveProduct} className="flex-1 overflow-y-auto pr-2 space-y-8 py-2 -mr-2 scrollbar-thin text-xs">
+            <form id="product-modal-form" onSubmit={handleSaveProduct} className="flex-1 overflow-y-auto px-6 py-5 space-y-8 text-xs scrollbar-thin">
               
               {/* Auto-Fill from Amazon / Product Link */}
               <div className="bg-gradient-to-r from-indigo-50/90 via-purple-50/40 to-blue-50/50 p-4 rounded-xl border border-indigo-100 shadow-sm space-y-2">
@@ -1337,7 +1539,7 @@ export const ProductList: React.FC = () => {
               </div>
 
               {/* Section 1: Basic Information */}
-              <div className="space-y-4">
+              <div id="section-basic" className="space-y-4">
                 <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-2 border-b pb-2 border-slate-100 uppercase tracking-wider">
                   <Info className="w-4 h-4 text-primary" />
                   1. Basic Information
@@ -1501,7 +1703,7 @@ export const ProductList: React.FC = () => {
               </div>
 
               {/* Section 2: Media Upload */}
-              <div className="space-y-4">
+              <div id="section-media" className="space-y-4 pt-2 border-t border-slate-100">
                 <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-2 border-b pb-2 border-slate-100 uppercase tracking-wider">
                   <ImageIcon className="w-4 h-4 text-primary" />
                   2. Product Images & Media
@@ -1600,7 +1802,7 @@ export const ProductList: React.FC = () => {
               </div>
 
               {/* Section 3: Description & Copywriting */}
-              <div className="space-y-4">
+              <div id="section-specs" className="space-y-4 pt-2 border-t border-slate-100">
                 <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-2 border-b pb-2 border-slate-100 uppercase tracking-wider">
                   <FileText className="w-4 h-4 text-primary" />
                   3. Technical Specs & Descriptions
@@ -1656,7 +1858,7 @@ export const ProductList: React.FC = () => {
               </div>
 
               {/* Section 4: Certifications */}
-              <div className="space-y-4">
+              <div id="section-certs" className="space-y-4 pt-2 border-t border-slate-100">
                 <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-2 border-b pb-2 border-slate-100 uppercase tracking-wider">
                   <Award className="w-4 h-4 text-primary" />
                   4. Certifications
@@ -1701,7 +1903,7 @@ export const ProductList: React.FC = () => {
               </div>
 
               {/* Section 5: Variants */}
-              <div className="space-y-4">
+              <div id="section-variants" className="space-y-4 pt-2 border-t border-slate-100">
                 <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-2 border-b pb-2 border-slate-100 uppercase tracking-wider">
                   <Layers className="w-4 h-4 text-primary" />
                   5. Product Pricing Variants
@@ -1869,52 +2071,56 @@ export const ProductList: React.FC = () => {
                 </div>
               </div>
 
-              {/* Action Buttons & Notification Banner */}
-              <div className="flex flex-col gap-3 mt-6 pt-4 border-t border-slate-100 bg-white sticky bottom-0 z-20">
+              </form>
+
+            {/* Sticky Footer Action Bar */}
+            <div className="sticky bottom-0 bg-white border-t border-slate-100 px-6 py-4 flex items-center justify-between z-30 shrink-0 shadow-lg">
+              <div>
                 {message && (
-                  <div className={`p-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2 shadow-sm border ${
-                    message.toLowerCase().includes('error') || message.toLowerCase().includes('failed')
-                      ? 'bg-red-50 text-red-700 border-red-200'
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  <div className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border ${
+                    message.toLowerCase().includes("error") || message.toLowerCase().includes("failed")
+                      ? "bg-red-50 text-red-700 border-red-200"
+                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
                   }`}>
-                    <div className="flex items-center gap-2">
-                      {message.toLowerCase().includes('error') || message.toLowerCase().includes('failed') ? (
-                        <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                      )}
-                      <span>{message}</span>
-                    </div>
-                    <button type="button" onClick={() => setMessage(null)} className="text-slate-400 hover:text-slate-600 font-extrabold text-sm px-1">✕</button>
+                    {message.toLowerCase().includes("error") || message.toLowerCase().includes("failed") ? (
+                      <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    )}
+                    <span>{message}</span>
+                    <button type="button" onClick={() => setMessage(null)} className="text-slate-400 hover:text-slate-600 font-extrabold text-xs ml-1">✕</button>
                   </div>
                 )}
-
-                <div className="flex justify-end gap-3">
-                  <button 
-                    type="button" 
-                    onClick={() => setShowProductModal(false)} 
-                    className="px-5 py-2.5 border border-slate-200 rounded-xl font-bold text-slate-500 hover:bg-slate-50 transition-all"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    disabled={loading || uploading} 
-                    className="px-6 py-2.5 bg-primary hover:bg-primary-dark text-white font-bold rounded-xl shadow-md disabled:opacity-50 transition-all flex items-center gap-1.5"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Saving...</span>
-                      </>
-                    ) : (
-                      <span>{selectedProduct ? 'Save Changes' : 'Create Product Catalog'}</span>
-                    )}
-                  </button>
-                </div>
               </div>
 
-            </form>
+              <div className="flex items-center gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => setShowProductModal(false)} 
+                  className="px-5 py-2.5 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  form="product-modal-form"
+                  disabled={loading || uploading} 
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl shadow-md disabled:opacity-50 transition-all flex items-center gap-2 cursor-pointer active:scale-[0.99]"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Saving Catalog Product...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>{selectedProduct ? "Update Product" : "Save Catalog Product"}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1922,7 +2128,7 @@ export const ProductList: React.FC = () => {
       {/* 3. Build Combo Bundle Modal */}
       {showComboModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowComboModal(false)} />
+          <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md" onClick={() => setShowComboModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg z-10 p-6">
             <h3 className="text-sm font-bold text-slate-800 mb-4">Create Promo Combo Bundle</h3>
             <form onSubmit={handleSaveCombo} className="space-y-4 text-xs">
@@ -1962,7 +2168,7 @@ export const ProductList: React.FC = () => {
       {/* 4. Product Details Overview Modal */}
       {showDetailsModal && selectedProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowDetailsModal(false)} />
+          <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md" onClick={() => setShowDetailsModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto z-10 p-6">
             <div className="flex justify-between items-start border-b pb-4 mb-6">
               <div>
@@ -2209,7 +2415,7 @@ export const ProductList: React.FC = () => {
       {/* 5. Quick Stock Update Modal */}
       {showStockModal && stockModalProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowStockModal(false)} />
+          <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md" onClick={() => setShowStockModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto z-10 p-6">
             <div className="flex justify-between items-center border-b pb-4 mb-4">
               <div>
@@ -2327,7 +2533,7 @@ export const ProductList: React.FC = () => {
       {/* 6. Quick Price & Offer Modal */}
       {showPriceModal && priceModalProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowPriceModal(false)} />
+          <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md" onClick={() => setShowPriceModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[90vh] overflow-y-auto z-10 p-6">
             <div className="flex justify-between items-center border-b pb-4 mb-4">
               <div>
@@ -2533,7 +2739,7 @@ export const ProductList: React.FC = () => {
       {/* Product Reviews & Ratings Modal */}
       {showReviewsModal && reviewsModalProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowReviewsModal(false)} />
+          <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md" onClick={() => setShowReviewsModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto z-10 p-6 space-y-6">
             
             {/* Modal Header */}

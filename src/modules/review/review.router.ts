@@ -7,6 +7,9 @@ import reviewValidator from "./review.validator";
 
 const reviewerRouter = Router();
 
+reviewerRouter.post("/public", reviewController.createPublicReview);
+reviewerRouter.get("/public", reviewController.getPaginatedReviews);
+
 reviewerRouter
   .route("/")
   .post(

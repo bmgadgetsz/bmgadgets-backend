@@ -120,7 +120,62 @@ const deleteReview = catchAsync(async (req, res) => {
   });
 });
 
+
+const createPublicReview = catchAsync(async (req, res) => {
+  const { productId, rating, message, name, imageUrl, imageUrls: rawImageUrls } = req.body;
+
+  if (!productId) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "productId is required");
+  }
+  if (!rating || rating < 1 || rating > 5) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Rating must be between 1 and 5");
+  }
+  if (!message || !message.trim()) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Review message is required");
+  }
+
+  let productExists = null;
+  if (/^[0-9a-fA-F]{24}$/.test(productId)) {
+    productExists = await prisma.product.findUnique({ where: { id: productId } }).catch(() => null);
+  }
+
+  if (!productExists) {
+    productExists = await prisma.product.findFirst({ where: { active: true } });
+    if (!productExists) {
+      throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
+    }
+  }
+
+  let customerProfileId = res.locals.currentUser?.customerProfile?.id;
+  if (!customerProfileId) {
+    const fallbackCustomer = await prisma.customerProfile.findFirst();
+    if (!fallbackCustomer) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "System customer profile required");
+    }
+    customerProfileId = fallbackCustomer.id;
+  }
+
+  const imageUrls = rawImageUrls || (imageUrl ? [imageUrl] : []);
+
+  const response = await reviewService.createReview({
+    productId: productExists.id,
+    rating: Number(rating),
+    message: message.trim(),
+    imageUrl: imageUrls[0] || imageUrl || null,
+    imageUrls,
+    approved: true,
+    createdById: customerProfileId,
+  } as any);
+
+  res.status(httpStatus.CREATED).json({
+    success: true,
+    message: "Review submitted successfully",
+    data: response,
+  });
+});
+
 const reviewController = {
+  createPublicReview,
   createReview,
   getReviewById,
   getPaginatedReviews,

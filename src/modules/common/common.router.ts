@@ -17,3 +17,5 @@ commonRouter
   );
 
 export default commonRouter;
+
+commonRouter.post("/file-upload-public", upload.array("file"), commonController.uploadSingleFile);

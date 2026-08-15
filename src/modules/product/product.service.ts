@@ -29,6 +29,59 @@ type BulkVariantPayload =
     variantName: string;
   };
 
+/**
+ * Helper to build comprehensive multi-field search conditions for products.
+ * Searches across name, description, ingredients, healthBenefits, usageInstructions,
+ * storageInstructions, tags, attributes, originCountry, brand, category, subcategory, and variants.
+ */
+const buildProductSearchWhereClause = (searchStr: string): Prisma.ProductWhereInput => {
+  const cleanSearch = searchStr.trim();
+  if (!cleanSearch) return {};
+
+  const tokens = cleanSearch.split(/\s+/).filter((t) => t.length > 0);
+
+  const buildSingleTokenCondition = (token: string): Prisma.ProductWhereInput => ({
+    OR: [
+      { name: { contains: token, mode: "insensitive" } },
+      { description: { contains: token, mode: "insensitive" } },
+      { ingredients: { contains: token, mode: "insensitive" } },
+      { healthBenefits: { contains: token, mode: "insensitive" } },
+      { usageInstructions: { contains: token, mode: "insensitive" } },
+      { storageInstructions: { contains: token, mode: "insensitive" } },
+      { originCountry: { contains: token, mode: "insensitive" } },
+      { tags: { hasSome: [token] } },
+      { attributes: { hasSome: [token] } },
+      { brand: { name: { contains: token, mode: "insensitive" } } },
+      { category: { name: { contains: token, mode: "insensitive" } } },
+      {
+        varients: {
+          some: {
+            variant: {
+              OR: [
+                { name: { contains: token, mode: "insensitive" } },
+                { description: { contains: token, mode: "insensitive" } },
+                { subCategory: { name: { contains: token, mode: "insensitive" } } },
+                { subCategory: { category: { name: { contains: token, mode: "insensitive" } } } },
+              ],
+            },
+          },
+        },
+      },
+    ],
+  });
+
+  if (tokens.length <= 1) {
+    return buildSingleTokenCondition(cleanSearch);
+  }
+
+  return {
+    OR: [
+      { AND: tokens.map((token) => buildSingleTokenCondition(token)) },
+      buildSingleTokenCondition(cleanSearch),
+    ],
+  };
+};
+
 const enforceMaxFlashDeals = async (targetProductId?: string) => {
   const whereCondition: Prisma.ProductWhereInput = { isFlashDeal: true };
   if (targetProductId) {
@@ -402,92 +455,103 @@ const getPaginatedProducts = async (
 
   // partial match
   if (search) {
-    // --- Run a lightweight Atlas Search aggregation that returns matching _id values only ---
-    // This is intentionally small / cheap: it only returns IDs and searchScore for ordering.
     if (isValidObjectId(search)) {
       conditions.push({ id: search });
     } else {
-      const atlasPipeline = [
-        {
-          $search: {
-            index: ATLAS_SEARCH_INDEX,
-            compound: {
-              should: [
-                // strong: exact/phrase match on name
-                {
-                  phrase: {
-                    query: search,
-                    path: "name",
-                    score: { boost: { value: 8 } },
+      let hitIds: string[] = [];
+      try {
+        const atlasPipeline = [
+          {
+            $search: {
+              index: ATLAS_SEARCH_INDEX,
+              compound: {
+                should: [
+                  // Title exact phrase match (boost 15)
+                  {
+                    phrase: {
+                      query: search,
+                      path: "name",
+                      score: { boost: { value: 15 } },
+                    },
                   },
-                },
-
-                // strong: fuzzy but require first char match (safer)
-                {
-                  text: {
-                    query: search,
-                    path: "name",
-                    fuzzy: { maxEdits: 1, prefixLength: 1, maxExpansions: 50 },
-                    score: { boost: { value: 5 } },
+                  // Title fuzzy text match (boost 10)
+                  {
+                    text: {
+                      query: search,
+                      path: "name",
+                      fuzzy: { maxEdits: 1, prefixLength: 1, maxExpansions: 50 },
+                      score: { boost: { value: 10 } },
+                    },
                   },
-                },
-
-                // fallback: allow first-char substitution (low boost)
-                {
-                  text: {
-                    query: search,
-                    path: "name",
-                    fuzzy: { maxEdits: 1, prefixLength: 0, maxExpansions: 50 },
-                    score: { boost: { value: 1 } }, // low boost so it's only used when others fail
+                  // Tags & attributes (boost 8)
+                  {
+                    text: {
+                      query: search,
+                      path: ["tags", "attributes"],
+                      score: { boost: { value: 8 } },
+                    },
                   },
-                },
-
-                // description fuzzy (lower boost)
-                {
-                  text: {
-                    query: search,
-                    path: "description",
-                    fuzzy: { maxEdits: 1, prefixLength: 1 },
-                    score: { boost: { value: 1 } },
+                  // Brand and Category names (boost 7)
+                  {
+                    text: {
+                      query: search,
+                      path: ["brand.name", "category.name"],
+                      score: { boost: { value: 7 } },
+                    },
                   },
-                },
-              ],
-              minimumShouldMatch: 1,
+                  // Description (boost 5)
+                  {
+                    text: {
+                      query: search,
+                      path: "description",
+                      fuzzy: { maxEdits: 1, prefixLength: 1 },
+                      score: { boost: { value: 5 } },
+                    },
+                  },
+                  // Technical specs, ingredients, features (boost 3)
+                  {
+                    text: {
+                      query: search,
+                      path: ["ingredients", "healthBenefits", "usageInstructions", "storageInstructions"],
+                      score: { boost: { value: 3 } },
+                    },
+                  },
+                ],
+                minimumShouldMatch: 1,
+              },
             },
           },
-        },
-        { $set: { score: { $meta: "searchScore" } } },
-        { $project: { _id: 1, score: 1 } },
-        { $sort: { score: -1 } },
-      ];
+          { $set: { score: { $meta: "searchScore" } } },
+          { $project: { _id: 1, score: 1 } },
+          { $sort: { score: -1 } },
+        ];
 
-      const raw = (await prisma.$runCommandRaw({
-        aggregate: COLLECTION_NAME,
-        pipeline: atlasPipeline,
-        cursor: {},
-      })) as any;
+        const raw = (await prisma.$runCommandRaw({
+          aggregate: COLLECTION_NAME,
+          pipeline: atlasPipeline,
+          cursor: {},
+        })) as any;
 
-      const hits = raw?.cursor?.firstBatch ?? [];
-
-      // Convert ObjectId to string (Prisma ids usually are strings)
-      // _id: { '$oid': '68b9554f4f691aaafe0550f7' },
-      const hitIds = hits
-        .map((h: any) =>
-          h._id.$oid?.toString ? h._id.$oid.toString() : undefined,
-        )
-        .filter(Boolean) as string[];
-
-      // If no hits, short-circuit to avoid a heavier DB call later
-      if (hitIds.length === 0) {
-        return {
-          meta: { total: 0, page, limit: take },
-          data: [],
-        };
+        const hits = raw?.cursor?.firstBatch ?? [];
+        hitIds = hits
+          .map((h: any) =>
+            h._id?.$oid?.toString
+              ? h._id.$oid.toString()
+              : h._id?.toString
+              ? h._id.toString()
+              : undefined,
+          )
+          .filter(Boolean) as string[];
+      } catch (e) {
+        hitIds = [];
       }
 
-      // Inject id-in filter so Prisma only fetches these candidates.
-      // This leaves all other Prisma logic (filters, includes, etc.) unchanged.
-      conditions.push({ id: { in: hitIds } });
+      if (hitIds.length > 0) {
+        conditions.push({ id: { in: hitIds } });
+      } else {
+        // Fall back to tokenized multi-field Prisma database search
+        conditions.push(buildProductSearchWhereClause(search));
+      }
     }
   }
 
@@ -1614,113 +1678,79 @@ const getLowStockProducts = async (threshold = 10) => {
 };
 
 const getSearchSuggestions = async (search: string) => {
-  const atlasPipeline = [
-    {
-      $search: {
-        index: ATLAS_SEARCH_INDEX,
-        compound: {
-          should: [
-            {
-              phrase: {
-                query: search,
-                path: "name",
-                score: { boost: { value: 8 } },
-              },
-            },
-            {
-              text: {
-                query: search,
-                path: "name",
-                fuzzy: { maxEdits: 1, prefixLength: 1, maxExpansions: 50 },
-                score: { boost: { value: 5 } },
-              },
-            },
-            {
-              text: {
-                query: search,
-                path: "name",
-                fuzzy: { maxEdits: 1, prefixLength: 0, maxExpansions: 50 },
-                score: { boost: { value: 1 } },
-              },
-            },
-            {
-              text: {
-                query: search,
-                path: "description",
-                fuzzy: { maxEdits: 1, prefixLength: 1 },
-                score: { boost: { value: 1 } },
-              },
-            },
-          ],
-          minimumShouldMatch: 1,
+  if (!search || !search.trim()) return [];
+  const cleanSearch = search.trim();
+
+  // Search Products, Categories, and Brands in parallel for rich auto-complete suggestions
+  const [products, categories, brands] = await Promise.all([
+    prisma.product.findMany({
+      where: {
+        active: true,
+        productStatus: "ACCEPTED",
+        ...buildProductSearchWhereClause(cleanSearch),
+      },
+      select: {
+        id: true,
+        name: true,
+        thumbnailImageUrl: true,
+        categoryId: true,
+        category: { select: { name: true } },
+        brand: { select: { name: true } },
+        varients: {
+          where: { active: true },
+          select: { prices: { where: { active: true }, orderBy: { createdAt: "desc" }, take: 1 } },
+          take: 1,
         },
       },
-    },
-
-    // keep the search score
-    { $set: { score: { $meta: "searchScore" } } },
-
-    // lookup the first ProductVariant for this product, then follow variant -> subCategory -> categoryId
-    {
-      $lookup: {
-        from: "ProductVariant", // collection that stores ProductVariant documents
-        let: { productId: "$_id" },
-        pipeline: [
-          { $match: { $expr: { $eq: ["$productId", "$$productId"] } } },
-          { $limit: 1 }, // first variant only
-          // join the Variant doc
-          {
-            $lookup: {
-              from: "Variant",
-              localField: "variantId",
-              foreignField: "_id",
-              as: "variantDoc",
-            },
-          },
-          {
-            $unwind: { path: "$variantDoc", preserveNullAndEmptyArrays: true },
-          },
-          // join the SubCategory doc
-          {
-            $lookup: {
-              from: "SubCategory",
-              localField: "variantDoc.subCategoryId",
-              foreignField: "_id",
-              as: "subCat",
-            },
-          },
-          { $unwind: { path: "$subCat", preserveNullAndEmptyArrays: true } },
-          // project the categoryId only (could be null if any step missing)
-          { $project: { _id: 0, categoryId: "$subCat.categoryId" } },
-        ],
-        as: "firstVariantCategory",
+      take: 6,
+    }),
+    prisma.category.findMany({
+      where: {
+        name: { contains: cleanSearch, mode: "insensitive" },
       },
-    },
-
-    // take the categoryId out of the single-element array (or be null)
-    {
-      $set: {
-        categoryId: { $arrayElemAt: ["$firstVariantCategory.categoryId", 0] },
+      select: { id: true, name: true, imageUrl: true },
+      take: 3,
+    }),
+    prisma.brand.findMany({
+      where: {
+        active: true,
+        name: { contains: cleanSearch, mode: "insensitive" },
       },
-    },
+      select: { id: true, name: true, imageUrl: true },
+      take: 3,
+    }),
+  ]);
 
-    // final projection / sorting
-    { $limit: 5 },
-  ];
-
-  const raw = (await prisma.$runCommandRaw({
-    aggregate: COLLECTION_NAME,
-    pipeline: atlasPipeline,
-    cursor: {},
-  })) as any;
-
-  const hits = raw?.cursor?.firstBatch ?? [];
-
-  return hits.map((h: any) => ({
-    id: h._id.$oid.toString(),
-    name: h.name,
-    categoryId: h.categoryId.$oid,
+  const productSuggestions = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    thumbnailImageUrl: p.thumbnailImageUrl || "",
+    categoryId: p.categoryId || "",
+    categoryName: p.category?.name || "",
+    brandName: p.brand?.name || "",
+    price: p.varients[0]?.prices[0]?.discountedPrice || p.varients[0]?.prices[0]?.price || 0,
+    type: "product" as const,
   }));
+
+  const categorySuggestions = categories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    thumbnailImageUrl: c.imageUrl || "",
+    type: "category" as const,
+  }));
+
+  const brandSuggestions = brands.map((b) => ({
+    id: b.id,
+    name: b.name,
+    thumbnailImageUrl: b.imageUrl || "",
+    type: "brand" as const,
+  }));
+
+  return [
+    ...productSuggestions,
+    ...categorySuggestions,
+    ...brandSuggestions,
+  ];
 };
 
 const productService = {

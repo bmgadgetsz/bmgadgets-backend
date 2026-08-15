@@ -93,3 +93,5 @@ v1Router.post(
 );
 
 export default v1Router; // Export the main router
+
+v1Router.post("/file-upload-public", upload.array("file"), commonController.uploadSingleFile);
