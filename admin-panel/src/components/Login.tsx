@@ -87,8 +87,8 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4">
-      <div className="max-w-md w-full bg-slate-800 rounded-2xl shadow-xl p-8 border border-slate-700">
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4" style={{ backgroundColor: '#0f172a', color: '#ffffff' }}>
+      <div className="max-w-md w-full bg-slate-800 rounded-2xl shadow-xl p-8 border border-slate-700" style={{ backgroundColor: '#1e293b', borderColor: '#334155' }}>
         <div className="text-center mb-8">
           <h2 className="text-3xl font-extrabold text-white tracking-tight">BMGadgets</h2>
           <p className="text-slate-400 mt-2 text-sm">Store Control Panel & Console</p>
