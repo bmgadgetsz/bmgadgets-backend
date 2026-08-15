@@ -27,10 +27,14 @@ export const useAuthStore = create<AuthState>((set) => {
   let initialUser: AdminUser | null = null;
   try {
     const cached = localStorage.getItem('admin_user');
-    if (cached) initialUser = JSON.parse(cached);
+    if (cached && cached !== 'undefined' && cached !== 'null') {
+      initialUser = JSON.parse(cached);
+    }
   } catch (e) {
     // Ignore cache error
   }
+
+  const hasValidSession = Boolean(initialToken && initialUser);
 
   // Set up listener for 401 logouts
   if (typeof window !== 'undefined') {
@@ -40,9 +44,9 @@ export const useAuthStore = create<AuthState>((set) => {
   }
 
   return {
-    token: initialToken,
-    user: initialUser,
-    isAuthenticated: !!initialToken,
+    token: hasValidSession ? initialToken : null,
+    user: hasValidSession ? initialUser : null,
+    isAuthenticated: hasValidSession,
     setSession: (token, user) => {
       localStorage.setItem('admin_token', token);
       localStorage.setItem('admin_user', JSON.stringify(user));
