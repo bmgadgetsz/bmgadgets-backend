@@ -36,11 +36,21 @@ function parseRedisConnection() {
       username: parsed.username || undefined,
       password: parsed.password || undefined,
       tls: url.startsWith("rediss://") ? {} : undefined,
+      maxRetriesPerRequest: null,
+      enableOfflineQueue: false,
+      retryStrategy(times: number) {
+        return Math.min(times * 2000, 15000);
+      },
     };
   }
   return {
     host: process.env.REDIS_HOST || "127.0.0.1",
     port: Number(process.env.REDIS_PORT || 6379),
+    maxRetriesPerRequest: null,
+    enableOfflineQueue: false,
+    retryStrategy(times: number) {
+      return Math.min(times * 2000, 15000);
+    },
   };
 }
 
@@ -126,7 +136,7 @@ export const pushOrderQueue = new Queue("shipway-pushOrder", {
 });
 
 pushOrderQueue.on("error", (err) => {
-  // Prevent unhandled error event crash when Redis/Valkey connection fails
+  if (err.message.includes("ENOTFOUND")) return;
   console.warn("[BullMQ Queue Warning]", err.message);
 });
 
@@ -694,7 +704,7 @@ export const shipwayPushWorker = new Worker(
 );
 
 shipwayPushWorker.on("error", (err) => {
-  // Prevent unhandled error event crash when Redis/Valkey connection fails
+  if (err.message.includes("ENOTFOUND")) return;
   console.warn("[BullMQ Worker Warning]", err.message);
 });
 

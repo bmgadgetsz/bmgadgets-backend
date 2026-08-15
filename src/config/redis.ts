@@ -8,10 +8,16 @@ const redis = redisUrl
       tls: redisUrl.startsWith("rediss://") ? {} : undefined,
       maxRetriesPerRequest: null,
       enableOfflineQueue: false,
+      retryStrategy(times) {
+        return Math.min(times * 2000, 15000);
+      },
     })
   : new Redis({
       maxRetriesPerRequest: null,
       enableOfflineQueue: false,
+      retryStrategy(times) {
+        return Math.min(times * 2000, 15000);
+      },
     });
 
 // Catch unhandled error events gracefully to prevent server log spam when Valkey is off or connecting
