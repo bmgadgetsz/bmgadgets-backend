@@ -45,6 +45,8 @@ app.use((req, res, next) => {
 app.use(
   helmet({
     contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginEmbedderPolicy: false,
   }),
 );
 app.use(cors(corsConfig));
@@ -68,7 +70,7 @@ app.use("/api/v1", v1Router);
 
 // Serve Admin Panel Static Assets
 app.use("/admin", express.static(path.join(process.cwd(), "public/admin")));
-app.get("/admin/*", (_req, res) => {
+app.get(["/admin", "/admin/*"], (_req, res) => {
   res.sendFile(path.join(process.cwd(), "public/admin", "index.html"));
 });
 
