@@ -54,6 +54,9 @@ app.use(morgan("dev"));
 
 import authController from "./modules/auth/auth.controller";
 
+app.get("/health", (_req, res) => {
+  res.status(httpStatus.OK).json({ status: "OK", timestamp: new Date().toISOString() });
+});
 app.get("/", (_req, res) => {
   res.send("Hello World");
 });
