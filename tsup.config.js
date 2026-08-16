@@ -8,4 +8,5 @@ export default defineConfig({
   tsconfig: "tsconfig.json",
   clean: true,
   skipNodeModulesBundle: true,
+  noExternal: ["compression"],
 });

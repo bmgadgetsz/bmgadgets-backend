@@ -1173,23 +1173,23 @@ export const ProductList: React.FC = () => {
                             className="w-12 h-12 object-cover rounded-lg border"
                           />
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-slate-800">{prod.name}</span>
+                        <td className="px-6 py-4 max-w-xs md:max-w-md">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-bold text-slate-800 truncate min-w-0" title={prod.name}>{prod.name}</span>
                             {prod.isFlashDeal && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-extrabold shadow-sm">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-extrabold shadow-sm shrink-0">
                                 <Zap className="w-3 h-3 text-amber-500 fill-amber-500 animate-bounce" />
                                 Flash Deal
                               </span>
                             )}
                             {prod.featured && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-[10px] font-extrabold shadow-sm">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-[10px] font-extrabold shadow-sm shrink-0">
                                 <Star className="w-3 h-3 text-blue-500 fill-blue-500" />
                                 Featured
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">{prod.id}</div>
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5 truncate">{prod.id}</div>
                         </td>
                         <td className="px-6 py-4 text-slate-500 font-semibold">
                           {prod.varients?.[0]?.variant?.subCategory?.category?.name || prod.brand?.name || 'Unassigned'}
@@ -1402,27 +1402,27 @@ export const ProductList: React.FC = () => {
 
       {/* 1. Create/Edit Product Modal */}
       {showProductModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md" onClick={() => setShowProductModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[92vh] overflow-hidden z-10 flex flex-col animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-2 pt-2 sm:pt-3">
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowProductModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl lg:max-w-6xl max-h-[97vh] overflow-hidden z-10 flex flex-col animate-fade-in">
             
             {/* Sticky Header */}
-            <div className="sticky top-0 bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between z-30 shrink-0">
-              <div className="flex items-center gap-3">
+            <div className="sticky top-0 bg-white border-b border-slate-100 px-6 py-3 flex items-center justify-between z-30 shrink-0">
+              <div className="flex items-center gap-3 min-w-0 flex-1 pr-4">
                 <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-extrabold shrink-0 shadow-2xs">
                   <Sparkles className="w-5 h-5" />
                 </div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-black text-slate-900">
+                    <h3 className="text-base font-black text-slate-900 truncate">
                       {selectedProduct ? "Edit Catalog Product" : "Add New Catalog Product"}
                     </h3>
-                    <span className="text-[10px] font-bold px-2.5 py-0.5 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200 uppercase tracking-wider">
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-200 uppercase tracking-wider shrink-0">
                       {selectedProduct ? "UPDATE" : "NEW"}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 font-medium mt-0.5">
-                    {selectedProduct ? `Product ID: ${selectedProduct.id}` : "Fill in product details, images, certifications and variants below"}
+                  <p className="text-xs text-slate-400 font-medium mt-0.5 truncate" title={selectedProduct ? selectedProduct.name : undefined}>
+                    {selectedProduct ? `${selectedProduct.name} (ID: ${selectedProduct.id})` : "Fill in product details, images, certifications and variants below"}
                   </p>
                 </div>
               </div>
@@ -2127,8 +2127,8 @@ export const ProductList: React.FC = () => {
 
       {/* 3. Build Combo Bundle Modal */}
       {showComboModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md" onClick={() => setShowComboModal(false)} />
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-2 pt-4 sm:pt-6">
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowComboModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg z-10 p-6">
             <h3 className="text-sm font-bold text-slate-800 mb-4">Create Promo Combo Bundle</h3>
             <form onSubmit={handleSaveCombo} className="space-y-4 text-xs">
@@ -2167,246 +2167,269 @@ export const ProductList: React.FC = () => {
 
       {/* 4. Product Details Overview Modal */}
       {showDetailsModal && selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md" onClick={() => setShowDetailsModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto z-10 p-6">
-            <div className="flex justify-between items-start border-b pb-4 mb-6">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-800">{selectedProduct.name}</h3>
-                <p className="text-[10px] text-slate-400 font-mono mt-0.5">Product ID: {selectedProduct.id}</p>
-              </div>
-              <span className={`inline-block px-3 py-1 border rounded-full text-xs font-bold ${
-                selectedProduct.productStatus === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                selectedProduct.productStatus === 'REJECTED' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-amber-50 text-warning border-amber-100'
-              }`}>
-                {selectedProduct.productStatus}
-              </span>
-            </div>
-
-            {/* Quick Status & Promotion Toggles Bar */}
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 mb-6 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h4 className="font-extrabold text-slate-800 text-xs flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-primary" />
-                  Visibility & Promotional Toggles
-                </h4>
-                <p className="text-[10px] text-slate-400 font-medium mt-0.5">Toggle live status flags for store display</p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Active Toggle Switch */}
-                <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm hover:border-slate-300 transition-all">
-                  <span className="text-[11px] font-bold text-slate-700">Catalog Active</span>
-                  <input
-                    type="checkbox"
-                    checked={!!selectedProduct.active}
-                    onChange={async () => {
-                      const newActive = !selectedProduct.active;
-                      setSelectedProduct({ ...selectedProduct, active: newActive });
-                      setProducts((prev) => prev.map((p) => p.id === selectedProduct.id ? { ...p, active: newActive } : p));
-                      await api.patch(`/products/${selectedProduct.id}`, { active: newActive });
-                      setMessage(`Product active status set to ${newActive ? 'ACTIVE' : 'INACTIVE'}`);
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-500 relative"></div>
-                </label>
-
-                {/* Flash Deal Toggle Switch */}
-                <label className="flex items-center gap-2 cursor-pointer bg-amber-50/60 px-3 py-1.5 rounded-xl border border-amber-200 shadow-sm hover:bg-amber-50 transition-all">
-                  <Zap className={`w-3.5 h-3.5 ${selectedProduct.isFlashDeal ? 'text-amber-500 fill-amber-500 animate-bounce' : 'text-slate-400'}`} />
-                  <span className="text-[11px] font-bold text-amber-900">Flash Deal ⚡</span>
-                  <input
-                    type="checkbox"
-                    checked={!!selectedProduct.isFlashDeal}
-                    onChange={async () => {
-                      const newFlash = !selectedProduct.isFlashDeal;
-                      setSelectedProduct({ ...selectedProduct, isFlashDeal: newFlash });
-                      setProducts((prev) => prev.map((p) => p.id === selectedProduct.id ? { ...p, isFlashDeal: newFlash } : p));
-                      await api.patch(`/products/${selectedProduct.id}`, { isFlashDeal: newFlash });
-                      await fetchProducts();
-                      setMessage(`Product Flash Deal set to ${newFlash ? 'ON ⚡ (Max 3 active)' : 'OFF'}`);
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-amber-500 relative"></div>
-                </label>
-
-                {/* Featured Toggle Switch */}
-                <label className="flex items-center gap-2 cursor-pointer bg-blue-50/60 px-3 py-1.5 rounded-xl border border-blue-200 shadow-sm hover:bg-blue-50 transition-all">
-                  <Star className={`w-3.5 h-3.5 ${selectedProduct.featured ? 'text-blue-500 fill-blue-500' : 'text-slate-400'}`} />
-                  <span className="text-[11px] font-bold text-blue-900">Featured ⭐</span>
-                  <input
-                    type="checkbox"
-                    checked={!!selectedProduct.featured}
-                    onChange={async () => {
-                      const newFeatured = !selectedProduct.featured;
-                      setSelectedProduct({ ...selectedProduct, featured: newFeatured });
-                      setProducts((prev) => prev.map((p) => p.id === selectedProduct.id ? { ...p, featured: newFeatured } : p));
-                      await api.patch(`/products/${selectedProduct.id}`, { featured: newFeatured });
-                      setMessage(`Product Featured status set to ${newFeatured ? 'ON ⭐' : 'OFF'}`);
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-blue-500 relative"></div>
-                </label>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-              {/* Product Thumbnail Gallery */}
-              <div className="md:col-span-1 space-y-3">
-                <img 
-                  src={selectedProduct.thumbnailImageUrl || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'} 
-                  alt={selectedProduct.name} 
-                  className="w-full aspect-square object-cover rounded-xl border"
-                />
-                {selectedProduct.imageUrls && selectedProduct.imageUrls.length > 0 && (
-                  <div className="grid grid-cols-3 gap-1">
-                    {selectedProduct.imageUrls.map((img: string, idx: number) => (
-                      <img key={idx} src={img} alt="" className="aspect-square object-cover rounded border" />
-                    ))}
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-2 pt-2 sm:pt-3">
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowDetailsModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl lg:max-w-6xl max-h-[97vh] flex flex-col overflow-hidden z-10">
+            
+            {/* Pinned Sticky Header */}
+            <div className="sticky top-0 bg-white border-b border-slate-100 z-30 p-4 space-y-3 shrink-0 shadow-2xs">
+              {/* Row 1: Title, ID, Status Badge & Close Button */}
+              <div className="flex justify-between items-start gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-extrabold text-slate-800 line-clamp-1" title={selectedProduct.name}>
+                      {selectedProduct.name}
+                    </h3>
+                    <span className={`inline-block px-2.5 py-0.5 border rounded-full text-[11px] font-extrabold shrink-0 ${
+                      selectedProduct.productStatus === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                      selectedProduct.productStatus === 'REJECTED' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-amber-50 text-amber-700 border-amber-100'
+                    }`}>
+                      {selectedProduct.productStatus}
+                    </span>
                   </div>
-                )}
-              </div>
-
-              {/* Product General Info */}
-              <div className="md:col-span-2 space-y-4 text-xs">
-                <div>
-                  <h4 className="font-bold text-slate-700">Specifications & Details</h4>
-                  <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-semibold">BRAND</span>
-                      <span className="font-bold text-slate-800">{selectedProduct.brand?.name || 'Store Brand'}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-semibold">ORIGIN COUNTRY</span>
-                      <span className="font-bold text-slate-800">{selectedProduct.originCountry || 'India'}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-semibold">HSN TAX CODE</span>
-                      <span className="font-mono font-bold text-slate-800">{selectedProduct.hsn?.hsnCode || 'N/A'}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-semibold">ATTRIBUTES (SPECS)</span>
-                      <span className="font-bold text-slate-800">{selectedProduct.attributes || 'N/A'}</span>
-                    </div>
-                  </div>
+                  <p className="text-[10px] text-slate-400 font-mono mt-0.5 truncate">Product ID: {selectedProduct.id}</p>
                 </div>
 
-                <div>
-                  <h4 className="font-bold text-slate-700">Description</h4>
-                  <p className="text-slate-500 mt-1 leading-relaxed">{selectedProduct.description || 'No description available.'}</p>
+                <button 
+                  type="button"
+                  onClick={() => setShowDetailsModal(false)}
+                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all cursor-pointer shrink-0"
+                  title="Close modal"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Row 2: Neat Action Buttons Bar Pinned on Top */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100/80">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                  <button 
+                    type="button" 
+                    onClick={() => { setShowDetailsModal(false); openEditModal(selectedProduct); }} 
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                    Edit Product
+                  </button>
+
+                  <button 
+                    type="button" 
+                    onClick={() => { setShowDetailsModal(false); openStockModal(selectedProduct); }} 
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                  >
+                    <Box className="w-3.5 h-3.5 text-blue-600" />
+                    Edit Stock
+                  </button>
+
+                  <button 
+                    type="button" 
+                    onClick={() => { setShowDetailsModal(false); openPriceModal(selectedProduct); }} 
+                    className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                  >
+                    <Tag className="w-3.5 h-3.5 text-amber-600" />
+                    Price & Offers
+                  </button>
+
+                  <button 
+                    type="button" 
+                    onClick={() => { setShowDetailsModal(false); openReviewsModal(selectedProduct); }} 
+                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                    Reviews
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => { setShowDetailsModal(false); handleDeleteProduct(selectedProduct.id); }} 
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                    title="Delete product"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              {/* Row 3: Visibility & Promotional Toggles */}
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
+                <span className="font-extrabold text-slate-700 text-[11px] flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                  Live Store Display Toggles:
+                </span>
+
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {/* Active Toggle Switch */}
+                  <label className="flex items-center gap-2 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs hover:border-slate-300 transition-all">
+                    <span className="text-[10px] font-bold text-slate-700">Catalog Active</span>
+                    <input
+                      type="checkbox"
+                      checked={!!selectedProduct.active}
+                      onChange={async () => {
+                        const newActive = !selectedProduct.active;
+                        setSelectedProduct({ ...selectedProduct, active: newActive });
+                        setProducts((prev) => prev.map((p) => p.id === selectedProduct.id ? { ...p, active: newActive } : p));
+                        await api.patch(`/products/${selectedProduct.id}`, { active: newActive });
+                        setMessage(`Product active status set to ${newActive ? 'ACTIVE' : 'INACTIVE'}`);
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-7 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500 relative"></div>
+                  </label>
+
+                  {/* Flash Deal Toggle Switch */}
+                  <label className="flex items-center gap-2 cursor-pointer bg-amber-50/60 px-2.5 py-1 rounded-lg border border-amber-200 shadow-2xs hover:bg-amber-50 transition-all">
+                    <Zap className={`w-3 h-3 ${selectedProduct.isFlashDeal ? 'text-amber-500 fill-amber-500 animate-bounce' : 'text-slate-400'}`} />
+                    <span className="text-[10px] font-bold text-amber-900">Flash Deal ⚡</span>
+                    <input
+                      type="checkbox"
+                      checked={!!selectedProduct.isFlashDeal}
+                      onChange={async () => {
+                        const newFlash = !selectedProduct.isFlashDeal;
+                        setSelectedProduct({ ...selectedProduct, isFlashDeal: newFlash });
+                        setProducts((prev) => prev.map((p) => p.id === selectedProduct.id ? { ...p, isFlashDeal: newFlash } : p));
+                        await api.patch(`/products/${selectedProduct.id}`, { active: selectedProduct.active, isFlashDeal: newFlash });
+                        await fetchProducts();
+                        setMessage(`Product Flash Deal set to ${newFlash ? 'ON ⚡ (Max 3 active)' : 'OFF'}`);
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-7 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500 relative"></div>
+                  </label>
+
+                  {/* Featured Toggle Switch */}
+                  <label className="flex items-center gap-2 cursor-pointer bg-blue-50/60 px-2.5 py-1 rounded-lg border border-blue-200 shadow-2xs hover:bg-blue-50 transition-all">
+                    <Star className={`w-3 h-3 ${selectedProduct.featured ? 'text-blue-500 fill-blue-500' : 'text-slate-400'}`} />
+                    <span className="text-[10px] font-bold text-blue-900">Featured ⭐</span>
+                    <input
+                      type="checkbox"
+                      checked={!!selectedProduct.featured}
+                      onChange={async () => {
+                        const newFeatured = !selectedProduct.featured;
+                        setSelectedProduct({ ...selectedProduct, featured: newFeatured });
+                        setProducts((prev) => prev.map((p) => p.id === selectedProduct.id ? { ...p, featured: newFeatured } : p));
+                        await api.patch(`/products/${selectedProduct.id}`, { featured: newFeatured });
+                        setMessage(`Product Featured status set to ${newFeatured ? 'ON ⭐' : 'OFF'}`);
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-7 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-500 relative"></div>
+                  </label>
                 </div>
               </div>
             </div>
 
-            {/* Extra Info Accordion Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs mb-6">
-              <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                <h4 className="font-bold text-slate-700 mb-1">Technical Specs & Materials</h4>
-                <p className="text-slate-500">{selectedProduct.ingredients || 'N/A'}</p>
-              </div>
-              <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                <h4 className="font-bold text-slate-700 mb-1">Key Features & Highlights</h4>
-                <p className="text-slate-500">{selectedProduct.healthBenefits || 'N/A'}</p>
-              </div>
-              <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                <h4 className="font-bold text-slate-700 mb-1">Operating Instructions</h4>
-                <p className="text-slate-500">{selectedProduct.usageInstructions || 'N/A'}</p>
-              </div>
-              <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                <h4 className="font-bold text-slate-700 mb-1">Safety Warnings & Care</h4>
-                <p className="text-slate-500">{selectedProduct.storageInstructions || 'N/A'}</p>
-              </div>
-            </div>
+            {/* Scrollable Body Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Product Thumbnail Gallery */}
+                <div className="md:col-span-1 space-y-3">
+                  <img 
+                    src={selectedProduct.thumbnailImageUrl || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'} 
+                    alt={selectedProduct.name} 
+                    className="w-full aspect-square object-cover rounded-xl border"
+                  />
+                  {selectedProduct.imageUrls && selectedProduct.imageUrls.length > 0 && (
+                    <div className="grid grid-cols-3 gap-1">
+                      {selectedProduct.imageUrls.map((img: string, idx: number) => (
+                        <img key={idx} src={img} alt="" className="aspect-square object-cover rounded border" />
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-            {/* Product Variants List */}
-            <div className="space-y-3 mb-6">
-              <h4 className="font-bold text-slate-700 text-xs">Active Pricing Variants ({selectedProduct.varients?.length || 0})</h4>
-              <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-hidden bg-slate-50/30">
-                {selectedProduct.varients && selectedProduct.varients.length > 0 ? (
-                  selectedProduct.varients.map((item: any) => (
-                    <div key={item.id} className="flex justify-between items-center p-3.5 text-xs bg-white">
+                {/* Product General Info */}
+                <div className="md:col-span-2 space-y-4 text-xs">
+                  <div>
+                    <h4 className="font-bold text-slate-700">Specifications & Details</h4>
+                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
                       <div>
-                        <span className="font-bold text-slate-800">{getVariantDisplayName(item)}</span>
-                        <span className="text-[10px] text-slate-400 font-semibold block mt-0.5">
-                          Discount: {item.discountPercentage}% | Warranty / Validity: {item.mfgDate?.slice(0, 10)} to {item.expiryDate?.slice(0, 10)}
-                        </span>
+                        <span className="text-[10px] text-slate-400 block font-semibold">BRAND</span>
+                        <span className="font-bold text-slate-800">{selectedProduct.brand?.name || 'Store Brand'}</span>
                       </div>
-                      <div className="text-right">
-                        <span className="font-extrabold text-slate-800 text-sm">₹{item.prices?.[0]?.price || 'N/A'}</span>
-                        {item.discountPercentage > 0 && (
-                          <span className="text-[9px] text-rose-500 block font-semibold">Special Offer</span>
-                        )}
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-semibold">ORIGIN COUNTRY</span>
+                        <span className="font-bold text-slate-800">{selectedProduct.originCountry || 'India'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-semibold">HSN TAX CODE</span>
+                        <span className="font-mono font-bold text-slate-800">{selectedProduct.hsn?.hsnCode || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-semibold">ATTRIBUTES (SPECS)</span>
+                        <span className="font-bold text-slate-800">{selectedProduct.attributes || 'N/A'}</span>
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="p-4 text-center text-slate-400 text-xs bg-white">
-                    No active pricing variants linked to this product.
                   </div>
-                )}
+
+                  <div>
+                    <h4 className="font-bold text-slate-700">Description</h4>
+                    <p className="text-slate-500 mt-1 leading-relaxed">{selectedProduct.description || 'No description available.'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Extra Info Accordion Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                  <h4 className="font-bold text-slate-700 mb-1">Technical Specs & Materials</h4>
+                  <p className="text-slate-500">{selectedProduct.ingredients || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                  <h4 className="font-bold text-slate-700 mb-1">Key Features & Highlights</h4>
+                  <p className="text-slate-500">{selectedProduct.healthBenefits || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                  <h4 className="font-bold text-slate-700 mb-1">Operating Instructions</h4>
+                  <p className="text-slate-500">{selectedProduct.usageInstructions || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                  <h4 className="font-bold text-slate-700 mb-1">Safety Warnings & Care</h4>
+                  <p className="text-slate-500">{selectedProduct.storageInstructions || 'N/A'}</p>
+                </div>
+              </div>
+
+              {/* Product Variants List */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-slate-700 text-xs">Active Pricing Variants ({selectedProduct.varients?.length || 0})</h4>
+                <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-hidden bg-slate-50/30">
+                  {selectedProduct.varients && selectedProduct.varients.length > 0 ? (
+                    selectedProduct.varients.map((item: any) => (
+                      <div key={item.id} className="flex justify-between items-center p-3.5 text-xs bg-white">
+                        <div>
+                          <span className="font-bold text-slate-800">{getVariantDisplayName(item)}</span>
+                          <span className="text-[10px] text-slate-400 font-semibold block mt-0.5">
+                            Discount: {item.discountPercentage}% | Warranty / Validity: {item.mfgDate?.slice(0, 10)} to {item.expiryDate?.slice(0, 10)}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-extrabold text-slate-800 text-sm">₹{item.prices?.[0]?.price || 'N/A'}</span>
+                          {item.discountPercentage > 0 && (
+                            <span className="text-[9px] text-rose-500 block font-semibold">Special Offer</span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-4 text-center text-slate-400 text-xs bg-white">
+                      No active pricing variants linked to this product.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap justify-between items-center gap-3 pt-5 border-t border-slate-100">
-              <div className="flex flex-wrap items-center gap-2">
-                <button 
-                  type="button" 
-                  onClick={() => { setShowDetailsModal(false); openStockModal(selectedProduct); }} 
-                  className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm"
-                >
-                  <Box className="w-4 h-4 text-blue-600" />
-                  Edit Stock
-                </button>
-
-                <button 
-                  type="button" 
-                  onClick={() => { setShowDetailsModal(false); openReviewsModal(selectedProduct); }} 
-                  className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm"
-                >
-                  <MessageSquare className="w-4 h-4 text-indigo-600" />
-                  Reviews
-                </button>
-
-                <button 
-                  type="button" 
-                  onClick={() => { setShowDetailsModal(false); openPriceModal(selectedProduct); }} 
-                  className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm"
-                >
-                  <Tag className="w-4 h-4 text-amber-600" />
-                  Price & Offers
-                </button>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button 
-                  type="button" 
-                  onClick={() => { setShowDetailsModal(false); openEditModal(selectedProduct); }} 
-                  className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm"
-                >
-                  <Edit className="w-4 h-4 text-emerald-600" />
-                  Edit Product
-                </button>
-
-                <button 
-                  type="button" 
-                  onClick={() => { setShowDetailsModal(false); handleDeleteProduct(selectedProduct.id); }} 
-                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm"
-                >
-                  <Trash2 className="w-4 h-4 text-rose-600" />
-                  Delete
-                </button>
-
-                <button 
-                  type="button" 
-                  onClick={() => setShowDetailsModal(false)} 
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all"
-                >
-                  Close
-                </button>
-              </div>
+            {/* Pinned Sticky Footer */}
+            <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex justify-end items-center shrink-0">
+              <button 
+                type="button" 
+                onClick={() => setShowDetailsModal(false)} 
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition-all shadow-sm cursor-pointer"
+              >
+                Close Window
+              </button>
             </div>
           </div>
         </div>
@@ -2414,8 +2437,8 @@ export const ProductList: React.FC = () => {
 
       {/* 5. Quick Stock Update Modal */}
       {showStockModal && stockModalProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md" onClick={() => setShowStockModal(false)} />
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-2 pt-4 sm:pt-6">
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowStockModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto z-10 p-6">
             <div className="flex justify-between items-center border-b pb-4 mb-4">
               <div>
@@ -2423,7 +2446,7 @@ export const ProductList: React.FC = () => {
                   <Box className="w-5 h-5 text-primary" />
                   Stock & Inventory Control
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">{stockModalProduct.name}</p>
+                <p className="text-xs text-slate-500 mt-0.5 truncate max-w-sm" title={stockModalProduct.name}>{stockModalProduct.name}</p>
               </div>
               <button 
                 onClick={() => setShowStockModal(false)}
@@ -2532,8 +2555,8 @@ export const ProductList: React.FC = () => {
 
       {/* 6. Quick Price & Offer Modal */}
       {showPriceModal && priceModalProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md" onClick={() => setShowPriceModal(false)} />
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-2 pt-4 sm:pt-6">
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowPriceModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[90vh] overflow-y-auto z-10 p-6">
             <div className="flex justify-between items-center border-b pb-4 mb-4">
               <div>
@@ -2541,7 +2564,7 @@ export const ProductList: React.FC = () => {
                   <Tag className="w-5 h-5 text-amber-500" />
                   Prices & Promotional Offers
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">{priceModalProduct.name}</p>
+                <p className="text-xs text-slate-500 mt-0.5 truncate max-w-md" title={priceModalProduct.name}>{priceModalProduct.name}</p>
               </div>
               <button 
                 onClick={() => setShowPriceModal(false)}
@@ -2738,8 +2761,8 @@ export const ProductList: React.FC = () => {
 
       {/* Product Reviews & Ratings Modal */}
       {showReviewsModal && reviewsModalProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md" onClick={() => setShowReviewsModal(false)} />
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-2 pt-4 sm:pt-6">
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowReviewsModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto z-10 p-6 space-y-6">
             
             {/* Modal Header */}
@@ -2753,7 +2776,7 @@ export const ProductList: React.FC = () => {
                   </div>
                 )}
                 <div>
-                  <h3 className="text-base font-extrabold text-slate-800">{reviewsModalProduct.name}</h3>
+                  <h3 className="text-base font-extrabold text-slate-800 line-clamp-1 max-w-md" title={reviewsModalProduct.name}>{reviewsModalProduct.name}</h3>
                   <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5 font-medium">
                     <MessageSquare className="w-3.5 h-3.5 text-indigo-500" />
                     Customer Reviews Feed & Moderation
