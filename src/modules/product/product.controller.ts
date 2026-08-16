@@ -95,7 +95,7 @@ const createProduct = catchAsync(async (req, res, next) => {
     else next(error);
   }
 
-  invalidateProductCache(response?.id).catch(() => {});
+  await invalidateProductCache(response?.id);
 
   res.status(httpStatus.CREATED).json({
     success: true,
@@ -119,7 +119,7 @@ const createManyProducts = catchAsync(async (req, res, next) => {
     else next(error);
   }
 
-  invalidateProductCache().catch(() => {});
+  await invalidateProductCache();
 
   res.status(httpStatus.CREATED).json({
     success: true,
@@ -190,18 +190,25 @@ const getPaginatedProducts = catchAsync(async (req, res) => {
   const cacheKey = `products:paginated:${JSON.stringify({ filters, options })}`;
   let response;
 
-  try {
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      response = JSON.parse(cached);
+  const isCacheBypass =
+    filters.isAdmin === "true" ||
+    req.query.refresh === "true" ||
+    req.headers["x-bypass-cache"] === "true";
+
+  if (!isCacheBypass) {
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        response = JSON.parse(cached);
+      }
+    } catch (err) {
+      // Quiet fallback if Redis is unreachable
     }
-  } catch (err) {
-    // Quiet fallback if Redis is unreachable
   }
 
   if (!response) {
     response = await productService.getPaginatedProducts(filters, options);
-    if (response) {
+    if (response && !isCacheBypass) {
       redis.set(cacheKey, JSON.stringify(response), "EX", 60).catch(() => {});
     }
   }
@@ -302,8 +309,7 @@ const updateProduct = catchAsync(async (req, res) => {
   }
 
   const response = await productService.updateProduct(id, data);
-  const affectedIds = [id, ...(response.disabledFlashDealIds || [])];
-  invalidateProductCache(affectedIds).catch(() => {});
+  await invalidateProductCache(id);
 
   try {
     const io = getIO();
@@ -341,7 +347,7 @@ const deleteProduct = catchAsync(async (req, res) => {
     throw error;
   }
 
-  invalidateProductCache(id).catch(() => {});
+  await invalidateProductCache(id);
 
   res.status(httpStatus.OK).json({
     success: true,

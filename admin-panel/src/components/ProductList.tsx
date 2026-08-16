@@ -213,6 +213,8 @@ export const ProductList: React.FC = () => {
         search: search || undefined,
         categoryId: categoryFilter || undefined,
         isAdmin: 'true',
+        refresh: 'true',
+        _t: Date.now(),
         page,
         limit,
       };
@@ -221,15 +223,25 @@ export const ProductList: React.FC = () => {
 
       const res: any = await api.get('/products', { params });
       const payload = res.data;
+      let fetchedList: any[] = [];
       if (payload && Array.isArray(payload.data)) {
+        fetchedList = payload.data;
         setProducts(payload.data);
         setTotalProducts(payload.meta?.total ?? payload.data.length);
       } else if (Array.isArray(res.data)) {
+        fetchedList = res.data;
         setProducts(res.data);
         setTotalProducts(res.data.length);
       } else {
         setProducts([]);
         setTotalProducts(0);
+      }
+
+      if (selectedProduct && fetchedList.length > 0) {
+        const match = fetchedList.find((p: any) => p.id === selectedProduct.id);
+        if (match) {
+          setSelectedProduct((prev: any) => prev ? { ...prev, ...match } : null);
+        }
       }
     } catch (err: any) {
       setMessage(err.message);
@@ -2314,19 +2326,14 @@ export const ProductList: React.FC = () => {
                       const newFlash = !selectedProduct.isFlashDeal;
                       setTogglingField('flash');
                       try {
-                        const res: any = await api.patch(`/products/${targetId}`, { active: selectedProduct.active, isFlashDeal: newFlash });
+                        const res: any = await api.patch(`/products/${targetId}`, { isFlashDeal: newFlash });
                         const updatedData = res.data?.data || res.data;
-                        const actualFlash = updatedData?.isFlashDeal ?? newFlash;
-                        const disabledIds: string[] = updatedData?.disabledFlashDealIds || [];
+                        const actualFlash = typeof updatedData?.isFlashDeal === 'boolean' ? updatedData.isFlashDeal : newFlash;
 
-                        setSelectedProduct((prev: any) => prev && prev.id === targetId ? { ...prev, ...updatedData, isFlashDeal: actualFlash } : prev);
-                        setProducts((prev) => prev.map((p) => {
-                          if (p.id === targetId) return { ...p, ...updatedData, isFlashDeal: actualFlash };
-                          if (disabledIds.includes(p.id)) return { ...p, isFlashDeal: false };
-                          return p;
-                        }));
+                        setSelectedProduct((prev: any) => prev && prev.id === targetId ? { ...prev, isFlashDeal: actualFlash } : prev);
+                        setProducts((prev) => prev.map((p) => p.id === targetId ? { ...p, isFlashDeal: actualFlash } : p));
                         await fetchProducts();
-                        setMessage(`Product Flash Deal set to ${actualFlash ? 'ON ⚡ (Max 3 active)' : 'OFF'}`);
+                        setMessage(`Product Flash Deal set to ${actualFlash ? 'ON ⚡' : 'OFF'}`);
                       } catch (err: any) {
                         setMessage(err.message || 'Failed to update Flash Deal status');
                       } finally {

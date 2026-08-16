@@ -82,43 +82,12 @@ const buildProductSearchWhereClause = (searchStr: string): Prisma.ProductWhereIn
   };
 };
 
-const enforceMaxFlashDeals = async (targetProductId?: string): Promise<string[]> => {
-  const whereCondition: Prisma.ProductWhereInput = { isFlashDeal: true };
-  if (targetProductId) {
-    whereCondition.id = { not: targetProductId };
-  }
-
-  const activeFlashDeals = await prisma.product.findMany({
-    where: whereCondition,
-    orderBy: { updatedAt: "asc" },
-    select: { id: true },
-  });
-
-  if (activeFlashDeals.length >= 3) {
-    const countToDisable = activeFlashDeals.length - 2;
-    const idsToDisable = activeFlashDeals
-      .slice(0, countToDisable)
-      .map((p) => p.id);
-    await prisma.product.updateMany({
-      where: { id: { in: idsToDisable } },
-      data: { isFlashDeal: false },
-    });
-    return idsToDisable;
-  }
-  return [];
-};
-
 const createProduct = async (
   data: Prisma.ProductUncheckedCreateInput & {
     varients: (VariantPayload & { variantName?: string })[];
   },
 ) => {
   const { varients, ...productData } = data;
-
-  let disabledFlashDealIds: string[] = [];
-  if (productData.isFlashDeal) {
-    disabledFlashDealIds = await enforceMaxFlashDeals();
-  }
 
   if (!productData.brandId || !isValidObjectId(productData.brandId)) {
     let defaultBrand = await prisma.brand.findFirst();
@@ -972,11 +941,6 @@ const getPaginatedProducts = async (
 };
 
 const updateProduct = async (id: string, data: Partial<Product>) => {
-  let disabledFlashDealIds: string[] = [];
-  if (data.isFlashDeal) {
-    disabledFlashDealIds = await enforceMaxFlashDeals(id);
-  }
-
   const updatedProduct = await prisma.product.update({
     where: { id },
     data,
@@ -1018,7 +982,7 @@ const updateProduct = async (id: string, data: Partial<Product>) => {
     );
   }
 
-  return { ...updatedProduct, disabledFlashDealIds };
+  return updatedProduct;
 };
 
 const deleteProduct = async (id: string) => {
