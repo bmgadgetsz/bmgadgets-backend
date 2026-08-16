@@ -9,38 +9,12 @@ import v1Router from "./routes/v1";
 import corsConfig from "./config/cors";
 import globalErrorHandler from "./middleware/globalErrorHandler";
 
-import zlib from "zlib";
+import compression from "compression";
 
 const app = express();
 app.set("trust proxy", 1);
 
-// Compress response bodies with native zlib (no external module needed)
-app.use((req, res, next) => {
-  const acceptEncoding = req.headers["accept-encoding"] || "";
-  if (!acceptEncoding.includes("gzip")) return next();
-
-  const originalWrite = res.write;
-  const originalEnd = res.end;
-  const gzip = zlib.createGzip();
-
-  res.setHeader("Content-Encoding", "gzip");
-  res.removeHeader("Content-Length");
-
-  gzip.on("data", (chunk) => (originalWrite as Function).call(res, chunk));
-  gzip.on("end", () => (originalEnd as Function).call(res));
-
-  // @ts-ignore
-  res.write = function (chunk: any, ...args: any[]) {
-    return gzip.write(chunk, ...args);
-  };
-  // @ts-ignore
-  res.end = function (chunk: any, ...args: any[]) {
-    if (chunk) gzip.write(chunk);
-    return gzip.end();
-  };
-
-  next();
-});
+app.use(compression());
 
 app.use(
   helmet({
