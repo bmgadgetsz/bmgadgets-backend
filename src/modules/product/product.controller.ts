@@ -585,24 +585,30 @@ const getLowStockHandler = catchAsync(async (req, res) => {
 
 const getSearchSuggestions = catchAsync(async (req, res) => {
   const { search } = req.query;
-  if (!search || typeof search !== "string" || search.trim() === "")
-    res.status(httpStatus.OK).json({
+  if (!search || typeof search !== "string" || search.trim() === "") {
+    return res.status(httpStatus.OK).json({
       success: true,
       message: "Search suggestions fetched successfully",
       data: [],
     });
+  }
 
   let response;
-  const cachedResponse = await redis.get(`search_suggestions:${search}`);
-  if (cachedResponse) response = JSON.parse(cachedResponse);
-  else {
+  try {
+    const cachedResponse = await redis.get(`search_suggestions:${search}`);
+    if (cachedResponse) response = JSON.parse(cachedResponse);
+  } catch (e) {}
+
+  if (!response) {
     response = await productService.getSearchSuggestions(search as string);
-    await redis.set(
-      `search_suggestions:${search}`,
-      JSON.stringify(response),
-      "EX",
-      1800,
-    );
+    try {
+      await redis.set(
+        `search_suggestions:${search}`,
+        JSON.stringify(response),
+        "EX",
+        1800,
+      );
+    } catch (e) {}
   }
 
   res.status(httpStatus.OK).json({

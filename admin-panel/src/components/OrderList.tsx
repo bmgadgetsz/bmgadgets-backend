@@ -504,6 +504,22 @@ export const OrderList: React.FC = () => {
                           <span className="text-[10px] bg-blue-50 text-indigo-600 px-2 py-0.5 rounded-md font-extrabold border border-indigo-100">
                             AWB: {ord.shipments[0].awb || 'Allocated'}
                           </span>
+                        ) : ord.trackingId ? (
+                          <span className="text-[10px] bg-blue-50 text-indigo-600 px-2 py-0.5 rounded-md font-extrabold border border-indigo-100">
+                            {ord.deliveryPartner ? `${ord.deliveryPartner}: ` : 'AWB: '}{ord.trackingId}
+                          </span>
+                        ) : ord.deliveryPartner ? (
+                          <span className="text-[10px] bg-blue-50 text-indigo-600 px-2 py-0.5 rounded-md font-extrabold border border-indigo-100">
+                            {ord.deliveryPartner}
+                          </span>
+                        ) : ord.status === 'DELIVERED' ? (
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md font-extrabold border border-emerald-100">
+                            Delivered
+                          </span>
+                        ) : ord.status === 'SHIPPED' ? (
+                          <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-extrabold border border-indigo-100">
+                            Dispatched
+                          </span>
                         ) : (
                           <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-md">
                             Not Dispatched
