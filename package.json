@@ -10,7 +10,7 @@
     "test": "node --experimental-vm-modules node_modules/.bin/jest",
     "dev": "tsx --watch src/index.ts",
     "check": "npx tsup && npx eslint src --max-warnings=0",
-    "build": "npx prisma@6.11.1 generate && tsup && cd admin-panel && npm install --include=dev && npm run ci:build && cd ..",
+    "build": "npm install && npx prisma@6.11.1 generate && tsup && cd admin-panel && npm install --include=dev && npm run ci:build && cd ..",
     "seed": "tsx src/seed.ts",
     "start": "node build/index.cjs"
   },
