@@ -11,10 +11,13 @@ import redis from "@/config/redis";
 import { parseProductLink } from "@/utils/productLinkParser";
 import productService from "./product.service";
 
-const invalidateProductCache = async (productId?: string) => {
+const invalidateProductCache = async (productId?: string | string[]) => {
   try {
     if (productId) {
-      await redis.del(`product:${productId}`);
+      const ids = Array.isArray(productId) ? productId : [productId];
+      for (const id of ids) {
+        if (id) await redis.del(`product:${id}`);
+      }
     }
     const keys = await redis.keys("products:paginated:*");
     if (keys && keys.length > 0) {
@@ -165,6 +168,7 @@ const getPaginatedProducts = catchAsync(async (req, res) => {
     "minPrice",
     "maxPrice",
     "featured",
+    "isFlashDeal",
     "createdById",
     "productStatus",
     "isAdmin",
@@ -298,7 +302,13 @@ const updateProduct = catchAsync(async (req, res) => {
   }
 
   const response = await productService.updateProduct(id, data);
-  invalidateProductCache(id).catch(() => {});
+  const affectedIds = [id, ...(response.disabledFlashDealIds || [])];
+  invalidateProductCache(affectedIds).catch(() => {});
+
+  try {
+    const io = getIO();
+    io.emit("product_updated", { id, isFlashDeal: response.isFlashDeal });
+  } catch (err) {}
 
   res.status(httpStatus.OK).json({
     success: true,

@@ -82,7 +82,7 @@ const buildProductSearchWhereClause = (searchStr: string): Prisma.ProductWhereIn
   };
 };
 
-const enforceMaxFlashDeals = async (targetProductId?: string) => {
+const enforceMaxFlashDeals = async (targetProductId?: string): Promise<string[]> => {
   const whereCondition: Prisma.ProductWhereInput = { isFlashDeal: true };
   if (targetProductId) {
     whereCondition.id = { not: targetProductId };
@@ -103,7 +103,9 @@ const enforceMaxFlashDeals = async (targetProductId?: string) => {
       where: { id: { in: idsToDisable } },
       data: { isFlashDeal: false },
     });
+    return idsToDisable;
   }
+  return [];
 };
 
 const createProduct = async (
@@ -113,8 +115,9 @@ const createProduct = async (
 ) => {
   const { varients, ...productData } = data;
 
+  let disabledFlashDealIds: string[] = [];
   if (productData.isFlashDeal) {
-    await enforceMaxFlashDeals();
+    disabledFlashDealIds = await enforceMaxFlashDeals();
   }
 
   if (!productData.brandId || !isValidObjectId(productData.brandId)) {
@@ -969,8 +972,9 @@ const getPaginatedProducts = async (
 };
 
 const updateProduct = async (id: string, data: Partial<Product>) => {
+  let disabledFlashDealIds: string[] = [];
   if (data.isFlashDeal) {
-    await enforceMaxFlashDeals(id);
+    disabledFlashDealIds = await enforceMaxFlashDeals(id);
   }
 
   const updatedProduct = await prisma.product.update({
@@ -1014,7 +1018,7 @@ const updateProduct = async (id: string, data: Partial<Product>) => {
     );
   }
 
-  return updatedProduct;
+  return { ...updatedProduct, disabledFlashDealIds };
 };
 
 const deleteProduct = async (id: string) => {

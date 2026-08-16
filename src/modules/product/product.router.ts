@@ -2,7 +2,7 @@ import validateRequest from "@/middleware/validateRequest";
 import { Router } from "express";
 import handleAuth from "@/middleware/handleAuth";
 import checkPermission from "@/middleware/checkPermission";
-import cacheControl from "@/middleware/cacheControl";
+import cacheControl, { noCache } from "@/middleware/cacheControl";
 import { productValidator } from "./product.validator";
 import productController from "./product.controller";
 
@@ -29,7 +29,7 @@ productRouter
   )
   .get(
     // public route
-    cacheControl(30, 120),
+    cacheControl(0, 60),
     productController.getPaginatedProducts,
   );
 
@@ -52,7 +52,7 @@ productRouter
   .route("/:id")
   .get(
     // public route
-    cacheControl(60, 300),
+    noCache,
     productController.getProductById,
   )
   .patch(

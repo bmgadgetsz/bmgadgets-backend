@@ -78,6 +78,7 @@ export const ProductList: React.FC = () => {
   const [showComboModal, setShowComboModal] = useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [togglingField, setTogglingField] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -2262,61 +2263,135 @@ export const ProductList: React.FC = () => {
 
                 <div className="flex flex-wrap items-center gap-2.5">
                   {/* Active Toggle Switch */}
-                  <label className="flex items-center gap-2 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs hover:border-slate-300 transition-all">
-                    <span className="text-[10px] font-bold text-slate-700">Catalog Active</span>
-                    <input
-                      type="checkbox"
-                      checked={!!selectedProduct.active}
-                      onChange={async () => {
-                        const newActive = !selectedProduct.active;
-                        setSelectedProduct({ ...selectedProduct, active: newActive });
-                        setProducts((prev) => prev.map((p) => p.id === selectedProduct.id ? { ...p, active: newActive } : p));
-                        await api.patch(`/products/${selectedProduct.id}`, { active: newActive });
-                        setMessage(`Product active status set to ${newActive ? 'ACTIVE' : 'INACTIVE'}`);
-                      }}
-                      className="sr-only peer"
-                    />
-                    <div className="w-7 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500 relative"></div>
-                  </label>
+                  <button
+                    type="button"
+                    disabled={!!togglingField}
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (togglingField) return;
+                      const targetId = selectedProduct.id;
+                      const newActive = !selectedProduct.active;
+                      setTogglingField('active');
+                      try {
+                        const res: any = await api.patch(`/products/${targetId}`, { active: newActive });
+                        const updatedData = res.data?.data || res.data;
+                        const actualActive = updatedData?.active ?? newActive;
+                        
+                        setSelectedProduct((prev: any) => prev && prev.id === targetId ? { ...prev, ...updatedData, active: actualActive } : prev);
+                        setProducts((prev) => prev.map((p) => p.id === targetId ? { ...p, ...updatedData, active: actualActive } : p));
+                        await fetchProducts();
+                        setMessage(`Product active status set to ${actualActive ? 'ACTIVE' : 'INACTIVE'}`);
+                      } catch (err: any) {
+                        setMessage(err.message || 'Failed to update active status');
+                      } finally {
+                        setTogglingField(null);
+                      }
+                    }}
+                    className={`flex items-center gap-2 px-2.5 py-1 rounded-lg border shadow-2xs transition-all outline-none ${
+                      togglingField === 'active' ? 'opacity-70 cursor-wait bg-slate-100 border-slate-300' : 'cursor-pointer bg-white border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    {togglingField === 'active' ? (
+                      <Loader2 className="w-3 h-3 text-slate-500 animate-spin" />
+                    ) : (
+                      <span className="text-[10px] font-bold text-slate-700">Catalog Active</span>
+                    )}
+                    <div className={`w-7 h-4 rounded-full relative transition-all ${selectedProduct.active ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                      <div className={`absolute top-[2px] bg-white border border-slate-300 rounded-full h-3 w-3 transition-all ${selectedProduct.active ? 'left-[14px]' : 'left-[2px]'}`} />
+                    </div>
+                  </button>
 
                   {/* Flash Deal Toggle Switch */}
-                  <label className="flex items-center gap-2 cursor-pointer bg-amber-50/60 px-2.5 py-1 rounded-lg border border-amber-200 shadow-2xs hover:bg-amber-50 transition-all">
-                    <Zap className={`w-3 h-3 ${selectedProduct.isFlashDeal ? 'text-amber-500 fill-amber-500 animate-bounce' : 'text-slate-400'}`} />
-                    <span className="text-[10px] font-bold text-amber-900">Flash Deal ⚡</span>
-                    <input
-                      type="checkbox"
-                      checked={!!selectedProduct.isFlashDeal}
-                      onChange={async () => {
-                        const newFlash = !selectedProduct.isFlashDeal;
-                        setSelectedProduct({ ...selectedProduct, isFlashDeal: newFlash });
-                        setProducts((prev) => prev.map((p) => p.id === selectedProduct.id ? { ...p, isFlashDeal: newFlash } : p));
-                        await api.patch(`/products/${selectedProduct.id}`, { active: selectedProduct.active, isFlashDeal: newFlash });
+                  <button
+                    type="button"
+                    disabled={!!togglingField}
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (togglingField) return;
+                      const targetId = selectedProduct.id;
+                      const newFlash = !selectedProduct.isFlashDeal;
+                      setTogglingField('flash');
+                      try {
+                        const res: any = await api.patch(`/products/${targetId}`, { active: selectedProduct.active, isFlashDeal: newFlash });
+                        const updatedData = res.data?.data || res.data;
+                        const actualFlash = updatedData?.isFlashDeal ?? newFlash;
+                        const disabledIds: string[] = updatedData?.disabledFlashDealIds || [];
+
+                        setSelectedProduct((prev: any) => prev && prev.id === targetId ? { ...prev, ...updatedData, isFlashDeal: actualFlash } : prev);
+                        setProducts((prev) => prev.map((p) => {
+                          if (p.id === targetId) return { ...p, ...updatedData, isFlashDeal: actualFlash };
+                          if (disabledIds.includes(p.id)) return { ...p, isFlashDeal: false };
+                          return p;
+                        }));
                         await fetchProducts();
-                        setMessage(`Product Flash Deal set to ${newFlash ? 'ON ⚡ (Max 3 active)' : 'OFF'}`);
-                      }}
-                      className="sr-only peer"
-                    />
-                    <div className="w-7 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500 relative"></div>
-                  </label>
+                        setMessage(`Product Flash Deal set to ${actualFlash ? 'ON ⚡ (Max 3 active)' : 'OFF'}`);
+                      } catch (err: any) {
+                        setMessage(err.message || 'Failed to update Flash Deal status');
+                      } finally {
+                        setTogglingField(null);
+                      }
+                    }}
+                    className={`flex items-center gap-2 px-2.5 py-1 rounded-lg border shadow-2xs transition-all outline-none ${
+                      togglingField === 'flash' ? 'opacity-70 cursor-wait bg-amber-100 border-amber-300' : 'cursor-pointer bg-amber-50/60 border-amber-200 hover:bg-amber-50'
+                    }`}
+                  >
+                    {togglingField === 'flash' ? (
+                      <Loader2 className="w-3 h-3 text-amber-600 animate-spin" />
+                    ) : (
+                      <Zap className={`w-3 h-3 ${selectedProduct.isFlashDeal ? 'text-amber-500 fill-amber-500 animate-bounce' : 'text-slate-400'}`} />
+                    )}
+                    <span className="text-[10px] font-bold text-amber-900">
+                      {togglingField === 'flash' ? 'Saving...' : 'Flash Deal ⚡'}
+                    </span>
+                    <div className={`w-7 h-4 rounded-full relative transition-all ${selectedProduct.isFlashDeal ? 'bg-amber-500' : 'bg-slate-200'}`}>
+                      <div className={`absolute top-[2px] bg-white border border-amber-300 rounded-full h-3 w-3 transition-all ${selectedProduct.isFlashDeal ? 'left-[14px]' : 'left-[2px]'}`} />
+                    </div>
+                  </button>
 
                   {/* Featured Toggle Switch */}
-                  <label className="flex items-center gap-2 cursor-pointer bg-blue-50/60 px-2.5 py-1 rounded-lg border border-blue-200 shadow-2xs hover:bg-blue-50 transition-all">
-                    <Star className={`w-3 h-3 ${selectedProduct.featured ? 'text-blue-500 fill-blue-500' : 'text-slate-400'}`} />
-                    <span className="text-[10px] font-bold text-blue-900">Featured ⭐</span>
-                    <input
-                      type="checkbox"
-                      checked={!!selectedProduct.featured}
-                      onChange={async () => {
-                        const newFeatured = !selectedProduct.featured;
-                        setSelectedProduct({ ...selectedProduct, featured: newFeatured });
-                        setProducts((prev) => prev.map((p) => p.id === selectedProduct.id ? { ...p, featured: newFeatured } : p));
-                        await api.patch(`/products/${selectedProduct.id}`, { featured: newFeatured });
-                        setMessage(`Product Featured status set to ${newFeatured ? 'ON ⭐' : 'OFF'}`);
-                      }}
-                      className="sr-only peer"
-                    />
-                    <div className="w-7 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-500 relative"></div>
-                  </label>
+                  <button
+                    type="button"
+                    disabled={!!togglingField}
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (togglingField) return;
+                      const targetId = selectedProduct.id;
+                      const newFeatured = !selectedProduct.featured;
+                      setTogglingField('featured');
+                      try {
+                        const res: any = await api.patch(`/products/${targetId}`, { featured: newFeatured });
+                        const updatedData = res.data?.data || res.data;
+                        const actualFeatured = updatedData?.featured ?? newFeatured;
+
+                        setSelectedProduct((prev: any) => prev && prev.id === targetId ? { ...prev, ...updatedData, featured: actualFeatured } : prev);
+                        setProducts((prev) => prev.map((p) => p.id === targetId ? { ...p, ...updatedData, featured: actualFeatured } : p));
+                        await fetchProducts();
+                        setMessage(`Product Featured status set to ${actualFeatured ? 'ON ⭐' : 'OFF'}`);
+                      } catch (err: any) {
+                        setMessage(err.message || 'Failed to update Featured status');
+                      } finally {
+                        setTogglingField(null);
+                      }
+                    }}
+                    className={`flex items-center gap-2 px-2.5 py-1 rounded-lg border shadow-2xs transition-all outline-none ${
+                      togglingField === 'featured' ? 'opacity-70 cursor-wait bg-blue-100 border-blue-300' : 'cursor-pointer bg-blue-50/60 border-blue-200 hover:bg-blue-50'
+                    }`}
+                  >
+                    {togglingField === 'featured' ? (
+                      <Loader2 className="w-3 h-3 text-blue-600 animate-spin" />
+                    ) : (
+                      <Star className={`w-3 h-3 ${selectedProduct.featured ? 'text-blue-500 fill-blue-500' : 'text-slate-400'}`} />
+                    )}
+                    <span className="text-[10px] font-bold text-blue-900">
+                      {togglingField === 'featured' ? 'Saving...' : 'Featured ⭐'}
+                    </span>
+                    <div className={`w-7 h-4 rounded-full relative transition-all ${selectedProduct.featured ? 'bg-blue-500' : 'bg-slate-200'}`}>
+                      <div className={`absolute top-[2px] bg-white border border-blue-300 rounded-full h-3 w-3 transition-all ${selectedProduct.featured ? 'left-[14px]' : 'left-[2px]'}`} />
+                    </div>
+                  </button>
                 </div>
               </div>
             </div>
