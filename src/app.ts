@@ -34,7 +34,7 @@ app.get("/health", (_req, res) => {
   res.status(httpStatus.OK).json({ status: "OK", timestamp: new Date().toISOString() });
 });
 app.get("/", (_req, res) => {
-  res.send("Hello World");
+  res.redirect("/admin/");
 });
 app.get("/api/v1/test-debug", (_req, res) => {
   res.status(httpStatus.OK).json({ debug: "ok", timestamp: new Date().toISOString() });
