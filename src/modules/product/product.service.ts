@@ -1321,7 +1321,7 @@ const getProductStats = async (period: Period = "Monthly") => {
 const getTopCategories = async (limit = 5, period: Period = "Weekly") => {
   const { start, end } = getPeriodRange(period);
 
-  let items = await prisma.orderItem.findMany({
+  const items = await prisma.orderItem.findMany({
     where: {
       order: {
         createdAt: { gte: start, lte: end },
@@ -1330,6 +1330,7 @@ const getTopCategories = async (limit = 5, period: Period = "Weekly") => {
     },
     select: {
       quantity: true,
+      returnedQuantity: true,
       price: {
         select: {
           price: true,
@@ -1359,58 +1360,20 @@ const getTopCategories = async (limit = 5, period: Period = "Weekly") => {
     },
   });
 
-  // Fallback to all non-cancelled orders if period range returns 0 sales items
-  if (items.length === 0) {
-    items = await prisma.orderItem.findMany({
-      where: {
-        order: {
-          status: { not: "CANCELLED" },
-        },
-      },
-      select: {
-        quantity: true,
-        price: {
-          select: {
-            price: true,
-            discountedPrice: true,
-            productVariant: {
-              select: {
-                product: {
-                  select: {
-                    categoryId: true,
-                    category: { select: { id: true, name: true } },
-                  },
-                },
-              },
-            },
-            productCombo: {
-              select: {
-                product: {
-                  select: {
-                    categoryId: true,
-                    category: { select: { id: true, name: true } },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-  }
-
   const revenueByCategory = new Map<
     string,
     { categoryId: string; name: string; revenue: number }
   >();
 
   for (const it of items) {
+    const qty = Math.max(0, Number(it.quantity ?? 0) - Number(it.returnedQuantity ?? 0));
+    if (qty <= 0) continue;
+
     const unitPrice = Number(
       it.price?.discountedPrice && it.price.discountedPrice > 0
         ? it.price.discountedPrice
         : (it.price?.price ?? 0),
     );
-    const qty = Number(it.quantity ?? 0);
     const category =
       it.price?.productVariant?.product?.category ||
       it.price?.productCombo?.product?.category;
@@ -1445,7 +1408,7 @@ const getTopCategories = async (limit = 5, period: Period = "Weekly") => {
 const getTopProducts = async (limit = 5, period: Period = "Weekly") => {
   const { start, end } = getPeriodRange(period);
 
-  let items = await prisma.orderItem.findMany({
+  const items = await prisma.orderItem.findMany({
     where: {
       order: {
         createdAt: { gte: start, lte: end },
@@ -1454,6 +1417,7 @@ const getTopProducts = async (limit = 5, period: Period = "Weekly") => {
     },
     select: {
       quantity: true,
+      returnedQuantity: true,
       price: {
         select: {
           price: true,
@@ -1485,48 +1449,6 @@ const getTopProducts = async (limit = 5, period: Period = "Weekly") => {
     },
   });
 
-  // Fallback to all non-cancelled orders if period range returns 0 items
-  if (items.length === 0) {
-    items = await prisma.orderItem.findMany({
-      where: {
-        order: {
-          status: { not: "CANCELLED" },
-        },
-      },
-      select: {
-        quantity: true,
-        price: {
-          select: {
-            price: true,
-            discountedPrice: true,
-            productVariant: {
-              select: {
-                product: {
-                  select: {
-                    id: true,
-                    name: true,
-                    thumbnailImageUrl: true,
-                  },
-                },
-              },
-            },
-            productCombo: {
-              select: {
-                product: {
-                  select: {
-                    id: true,
-                    name: true,
-                    thumbnailImageUrl: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-  }
-
   // aggregate by product id
   const revenueByProduct = new Map<
     string,
@@ -1540,12 +1462,14 @@ const getTopProducts = async (limit = 5, period: Period = "Weekly") => {
   >();
 
   for (const it of items) {
+    const qty = Math.max(0, Number(it.quantity ?? 0) - Number(it.returnedQuantity ?? 0));
+    if (qty <= 0) continue;
+
     const unitPrice = Number(
       it.price?.discountedPrice && it.price.discountedPrice > 0
         ? it.price.discountedPrice
         : (it.price?.price ?? 0),
     );
-    const qty = Number(it.quantity ?? 0);
     const product =
       it.price?.productVariant?.product || it.price?.productCombo?.product;
     const pid = product?.id ?? "unknown";

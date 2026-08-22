@@ -1,0 +1,13 @@
+node_modules
+admin-panel/node_modules
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+build
+public/admin
+*.log
+.DS_Store
+.vscode
+.idea

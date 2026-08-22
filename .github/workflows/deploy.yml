@@ -1,0 +1,33 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH (PM2)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST || secrets.ORACLE_HOST }}
+          username: ${{ secrets.SERVER_USER || 'ubuntu' }}
+          key: ${{ secrets.SERVER_SSH_KEY || secrets.ORACLE_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+            echo "🚀 Pulling latest code..."
+            cd /home/ubuntu/bmq-backend
+            git pull origin main
+
+            echo "📦 Installing & Building..."
+            npm install
+            npm run build
+
+            echo "🔄 Restarting App with PM2..."
+            pm2 reload ecosystem.config.cjs || pm2 start ecosystem.config.cjs
+
+            echo "✅ Deployment finished successfully!"
