@@ -33,6 +33,7 @@ type FlatWishlistItem = {
   productName: string | null; // owning product name (combos: parent product name)
   itemName: string; // only for VARIANT
   price: number | null; // latest active price
+  discountedPrice?: number | null; // direct discounted price from DB
   priceId: string | null; // latest active price id
   discountPercentage: number | null; // discount percentage if available
   quantity?: number; // quantity in cart, optional for wishlist
@@ -155,7 +156,7 @@ const getCartItems = async (userId: string) => {
             select: { id: true, name: true, thumbnailImageUrl: true },
           },
           prices: {
-            select: { price: true, id: true },
+            select: { price: true, discountedPrice: true, id: true },
             orderBy: { createdAt: "desc" },
             take: 1,
             where: { active: true },
@@ -168,7 +169,7 @@ const getCartItems = async (userId: string) => {
           name: true,
           imageUrl: true,
           prices: {
-            select: { price: true, id: true },
+            select: { price: true, discountedPrice: true, id: true },
             orderBy: { createdAt: "desc" },
             take: 1,
             where: { active: true },
@@ -207,6 +208,7 @@ const getCartItems = async (userId: string) => {
         categoryId: pv.variant?.subCategory?.categoryId ?? null,
         itemName: pv.variant.name,
         price: latest?.price ?? null,
+        discountedPrice: latest?.discountedPrice ?? null,
         discountPercentage: pv.discountPercentage,
         priceId: latest?.id ?? null,
         quantity: c.quantity,
@@ -530,7 +532,7 @@ const getWishListItems = async (userId: string) => {
             select: { id: true, name: true, thumbnailImageUrl: true },
           },
           prices: {
-            select: { price: true, id: true },
+            select: { price: true, discountedPrice: true, id: true },
             orderBy: { createdAt: "desc" },
             take: 1,
             where: { active: true },
@@ -543,7 +545,7 @@ const getWishListItems = async (userId: string) => {
           name: true,
           imageUrl: true,
           prices: {
-            select: { price: true, id: true },
+            select: { price: true, discountedPrice: true, id: true },
             orderBy: { createdAt: "desc" },
             take: 1,
             where: { active: true },
@@ -582,6 +584,7 @@ const getWishListItems = async (userId: string) => {
         categoryId: pv.variant?.subCategory?.categoryId ?? null,
         itemName: pv.variant.name,
         price: latest?.price ?? null,
+        discountedPrice: latest?.discountedPrice ?? null,
         discountPercentage: pv.discountPercentage,
         priceId: latest?.id ?? null,
       };

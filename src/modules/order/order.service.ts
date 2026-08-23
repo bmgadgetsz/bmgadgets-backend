@@ -76,15 +76,18 @@ const calculateCart = async (
   });
   // Calculate subtotal (including discounted prices provided at product level)
   const subTotal = cart.reduce((acc, curr) => {
-    const productVariantPrice = curr.productVariant?.prices[0].price
-      ? curr.productVariant.prices[0].price -
-        (curr.productVariant.prices[0].price *
-          (curr.productVariant.discountPercentage ?? 0)) /
-          100
+    const vPrice = curr.productVariant?.prices[0];
+    const productVariantPrice = vPrice
+      ? (typeof vPrice.discountedPrice === "number" && vPrice.discountedPrice > 0
+          ? vPrice.discountedPrice
+          : vPrice.price -
+            (vPrice.price *
+              (curr.productVariant?.discountPercentage ?? 0)) /
+              100)
       : 0;
     const productVariantQuantity = curr.quantity ?? 0;
 
-    const productComboPrice = curr.productCombo?.prices[0].price ?? 0;
+    const productComboPrice = curr.productCombo?.prices[0]?.price ?? 0;
     const productComboQuantity = curr.quantity ?? 0;
 
     return (
@@ -230,15 +233,18 @@ const calculateCart = async (
         });
 
         const applicableItemsSubTotal = applicableItems.reduce((acc, curr) => {
-          const productVariantPrice = curr.productVariant?.prices[0].price
-            ? curr.productVariant.prices[0].price -
-              (curr.productVariant.prices[0].price *
-                (curr.productVariant.discountPercentage ?? 0)) /
-                100
+          const vPrice = curr.productVariant?.prices[0];
+          const productVariantPrice = vPrice
+            ? (typeof vPrice.discountedPrice === "number" && vPrice.discountedPrice > 0
+                ? vPrice.discountedPrice
+                : vPrice.price -
+                  (vPrice.price *
+                    (curr.productVariant?.discountPercentage ?? 0)) /
+                    100)
             : 0;
           const productVariantQuantity = curr.quantity ?? 0;
 
-          const productComboPrice = curr.productCombo?.prices[0].price ?? 0;
+          const productComboPrice = curr.productCombo?.prices[0]?.price ?? 0;
           const productComboQuantity = curr.quantity ?? 0;
 
           return (

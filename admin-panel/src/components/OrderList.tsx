@@ -943,7 +943,6 @@ export const OrderList: React.FC = () => {
                               <div className="min-w-0 max-w-[260px] sm:max-w-[320px]">
                                 <div className="font-extrabold text-slate-800 truncate" title={name}>{name}</div>
                                 {variantName && <div className="text-[10px] text-slate-500 font-medium truncate">Variant: {variantName}</div>}
-                                {item.hsn?.hsnCode && <div className="text-[10px] text-slate-400 font-mono">HSN: {item.hsn.hsnCode}</div>}
                               </div>
                             </div>
                           </td>

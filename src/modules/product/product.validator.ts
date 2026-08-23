@@ -11,6 +11,7 @@ export const faqSchema = z.object({
 const variantSchema = z.object({
   variantId: z.string().min(1, "variantId is required"),
   discountPercentage: z.number().int().min(0).max(100).optional(),
+  discountedPrice: z.number().int().min(0).optional(),
   mfgDate: z.string(),
   expiryDate: z.string(),
   price: z.number().int().min(0, "Price must be non-negative"),
@@ -21,6 +22,7 @@ const variantSchema = z.object({
 const bulkVariantSchema = z.object({
   variantName: z.string().min(1, "variantId is required"),
   discountPercentage: z.number().int().min(0).max(100).optional(),
+  discountedPrice: z.number().int().min(0).optional(),
   mfgDate: z.string(),
   expiryDate: z.string(),
   price: z.number().int().min(0, "Price must be non-negative"),
@@ -127,6 +129,7 @@ const createProductVariantSchema = z.object({
   body: z.strictObject({
     variantId: z.string(),
     discountPercentage: z.number().int().min(0).max(100).optional(),
+    discountedPrice: z.number().int().min(0).optional(),
     mfgDate: z.string().optional(),
     expiryDate: z.string().optional(),
     price: z.number().int().min(0, "Price must be non-negative").optional(),
@@ -138,6 +141,7 @@ const createProductVariantSchema = z.object({
 const updateProductVariantSchema = z.object({
   body: z.strictObject({
     discountPercentage: z.number().int().min(0).max(100).optional(),
+    discountedPrice: z.number().int().min(0).optional(),
     mfgDate: z.string().optional(),
     expiryDate: z.string().optional(),
     variantId: z.string().optional(),

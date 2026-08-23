@@ -164,6 +164,16 @@ export const ProductList: React.FC = () => {
   const [priceInputs, setPriceInputs] = useState<{ [variantId: string]: { price: number; discountPercentage: number; finalPrice?: number } }>({});
   const [savingPrice, setSavingPrice] = useState(false);
 
+  // Section 5: Inline editing for existing variants in Product Form modal
+  const [editingVariantIndex, setEditingVariantIndex] = useState<number | null>(null);
+  const [editingVariantForm, setEditingVariantForm] = useState<any>(null);
+  const [savingVariant, setSavingVariant] = useState(false);
+
+  // Product Details / View Modal: Inline price editing
+  const [editingDetailVariantId, setEditingDetailVariantId] = useState<string | null>(null);
+  const [detailVariantPriceInputs, setDetailVariantPriceInputs] = useState<{ [variantId: string]: { price: number; discountPercentage: number; finalPrice: number } }>({});
+  const [savingDetailVariantId, setSavingDetailVariantId] = useState<string | null>(null);
+
   // Paginated Product Reviews Modal state
   const [reviewsModalProduct, setReviewsModalProduct] = useState<any>(null);
   const [showReviewsModal, setShowReviewsModal] = useState(false);
@@ -200,7 +210,7 @@ export const ProductList: React.FC = () => {
     videoUrl: '', varients: [], categoryId: ''
   });
   const [draftVariant, setDraftVariant] = useState<any>({
-    variantId: '', variantName: '', subCategoryId: '', discountPercentage: 0, mfgDate: '', expiryDate: '', weightInGrams: 100, price: 1000
+    variantId: '', variantName: '', subCategoryId: '', discountPercentage: 0, mfgDate: '', expiryDate: '', weightInGrams: 100, price: 1000, sellingPrice: 1000
   });
   const [comboForm, setComboForm] = useState<any>({
     name: '', description: '', imageUrl: '', weightInGrams: 0, price: 0, productVariantIds: [], productId: ''
@@ -311,14 +321,28 @@ export const ProductList: React.FC = () => {
     }
   };
 
+  const openDetailsModal = (prod: any) => {
+    setSelectedProduct(prod);
+    const initialDetailPrices: { [variantId: string]: { price: number; discountPercentage: number; finalPrice: number } } = {};
+    (prod.varients || []).forEach((v: any) => {
+      const baseP = v.prices?.[0]?.price ?? v.price ?? 0;
+      const disc = v.discountPercentage ?? 0;
+      const finalP = v.prices?.[0]?.discountedPrice ?? (disc > 0 ? Math.round(baseP * (1 - disc / 100)) : baseP);
+      initialDetailPrices[v.id] = { price: baseP, discountPercentage: disc, finalPrice: finalP };
+    });
+    setDetailVariantPriceInputs(initialDetailPrices);
+    setEditingDetailVariantId(null);
+    setShowDetailsModal(true);
+  };
+
   const openPriceModal = (prod: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setPriceModalProduct(prod);
     const initialInputs: { [variantId: string]: { price: number; discountPercentage: number; finalPrice: number } } = {};
     (prod.varients || []).forEach((v: any) => {
-      const currentPrice = v.prices?.[0]?.price || 0;
+      const currentPrice = v.prices?.[0]?.price || v.price || 0;
       const currentDiscount = v.discountPercentage || 0;
-      const currentFinal = v.prices?.[0]?.discountedPrice ?? Math.round(currentPrice * (1 - currentDiscount / 100));
+      const currentFinal = v.prices?.[0]?.discountedPrice ?? (currentDiscount > 0 ? Math.round(currentPrice * (1 - currentDiscount / 100)) : currentPrice);
       initialInputs[v.id] = { price: currentPrice, discountPercentage: currentDiscount, finalPrice: currentFinal };
     });
     setPriceInputs(initialInputs);
@@ -328,19 +352,19 @@ export const ProductList: React.FC = () => {
   const handleSaveVariantPriceAndOffer = async (v: any) => {
     setSavingPrice(true);
     try {
-      const currentInputs = priceInputs[v.id] || { price: 0, discountPercentage: 0 };
+      const currentInputs = priceInputs[v.id] || { price: 0, discountPercentage: 0, finalPrice: 0 };
       const priceVal = Number(currentInputs.price || 0);
       const discountVal = Number(currentInputs.discountPercentage || 0);
+      const finalVal = currentInputs.finalPrice !== undefined ? Number(currentInputs.finalPrice) : (discountVal > 0 ? Math.round(priceVal * (1 - discountVal / 100)) : priceVal);
       const targetMasterVariantId = v.variantId || v.variant?.id;
 
       await api.patch(`/products/${priceModalProduct.id}/variants/${targetMasterVariantId}`, {
         price: priceVal,
-        discountPercentage: discountVal
+        discountPercentage: discountVal,
+        discountedPrice: finalVal
       });
 
-      setMessage(`Price & Offer for "${v.variant?.name || 'variant'}" updated successfully!`);
-
-      const calcDiscounted = Math.round(priceVal * (1 - discountVal / 100));
+      setMessage(`Price & Offer for "${getVariantDisplayName(v)}" updated successfully!`);
 
       // Update state locally
       setProducts((prev) => prev.map((p) => {
@@ -350,7 +374,7 @@ export const ProductList: React.FC = () => {
               return {
                 ...item,
                 discountPercentage: discountVal,
-                prices: [{ price: priceVal, discountedPrice: calcDiscounted }]
+                prices: [{ price: priceVal, discountedPrice: finalVal }]
               };
             }
             return item;
@@ -367,17 +391,106 @@ export const ProductList: React.FC = () => {
             return {
               ...item,
               discountPercentage: discountVal,
-              prices: [{ price: priceVal, discountedPrice: calcDiscounted }]
+              prices: [{ price: priceVal, discountedPrice: finalVal }]
             };
           }
           return item;
         });
         return { ...prev, varients: updatedVarients };
       });
+
+      if (selectedProduct && selectedProduct.id === priceModalProduct.id) {
+        setSelectedProduct((prev: any) => {
+          if (!prev) return prev;
+          const updatedVarients = (prev.varients || []).map((item: any) => {
+            if (item.id === v.id) {
+              return {
+                ...item,
+                discountPercentage: discountVal,
+                prices: [{ price: priceVal, discountedPrice: finalVal }]
+              };
+            }
+            return item;
+          });
+          return { ...prev, varients: updatedVarients };
+        });
+      }
     } catch (err: any) {
       setMessage(`Failed to update price & offer: ${err.message}`);
     } finally {
       setSavingPrice(false);
+    }
+  };
+
+  const handleSaveDetailVariantPrice = async (v: any) => {
+    if (!selectedProduct) return;
+    const inputState = detailVariantPriceInputs[v.id] || {
+      price: v.prices?.[0]?.price ?? v.price ?? 0,
+      discountPercentage: v.discountPercentage ?? 0,
+      finalPrice: v.prices?.[0]?.discountedPrice ?? (v.discountPercentage ? Math.round((v.prices?.[0]?.price || v.price || 0) * (1 - v.discountPercentage / 100)) : (v.prices?.[0]?.price || v.price || 0))
+    };
+    const priceVal = Number(inputState.price || 0);
+    const discountVal = Number(inputState.discountPercentage || 0);
+    const finalVal = inputState.finalPrice !== undefined ? Number(inputState.finalPrice) : (discountVal > 0 ? Math.round(priceVal * (1 - discountVal / 100)) : priceVal);
+    const targetMasterVariantId = v.variantId || v.variant?.id;
+
+    if (priceVal <= 0) {
+      alert("Base Price / MRP must be greater than 0.");
+      return;
+    }
+    if (finalVal > priceVal) {
+      alert(`Final Selling Price (₹${finalVal}) cannot be higher than Base Price / MRP (₹${priceVal}).`);
+      return;
+    }
+
+    setSavingDetailVariantId(v.id);
+    try {
+      await api.patch(`/products/${selectedProduct.id}/variants/${targetMasterVariantId}`, {
+        price: priceVal,
+        discountPercentage: discountVal,
+        discountedPrice: finalVal
+      });
+
+      setMessage(`Price for "${getVariantDisplayName(v)}" updated successfully to ₹${finalVal}!`);
+
+      // Update state locally
+      setSelectedProduct((prev: any) => {
+        if (!prev) return prev;
+        const updatedVarients = (prev.varients || []).map((item: any) => {
+          if (item.id === v.id) {
+            return {
+              ...item,
+              discountPercentage: discountVal,
+              prices: [{ price: priceVal, discountedPrice: finalVal }]
+            };
+          }
+          return item;
+        });
+        return { ...prev, varients: updatedVarients };
+      });
+
+      setProducts((prev) => prev.map((p) => {
+        if (p.id === selectedProduct.id) {
+          const updatedVarients = (p.varients || []).map((item: any) => {
+            if (item.id === v.id) {
+              return {
+                ...item,
+                discountPercentage: discountVal,
+                prices: [{ price: priceVal, discountedPrice: finalVal }]
+              };
+            }
+            return item;
+          });
+          return { ...p, varients: updatedVarients };
+        }
+        return p;
+      }));
+
+      setEditingDetailVariantId(null);
+    } catch (err: any) {
+      setMessage(`Failed to update price: ${err.message}`);
+    } finally {
+      setSavingDetailVariantId(null);
     }
   };
 
@@ -718,24 +831,20 @@ export const ProductList: React.FC = () => {
 
   const handleBasePriceChange = (val: number) => {
     const newBase = Math.max(0, val);
-    const currentSell = draftVariant.sellingPrice !== undefined ? draftVariant.sellingPrice : newBase;
-    let newDiscount = 0;
-    
-    if (newBase > 0 && currentSell <= newBase) {
-      newDiscount = Math.round(((newBase - currentSell) / newBase) * 100);
-    }
+    const discount = Number(draftVariant.discountPercentage || 0);
+    const newSell = discount > 0 ? Math.round(newBase * (1 - discount / 100)) : newBase;
 
     setDraftVariant((prev: any) => ({
       ...prev,
       price: newBase,
-      sellingPrice: currentSell,
-      discountPercentage: newDiscount
+      sellingPrice: newSell,
+      discountPercentage: discount
     }));
   };
 
   const handleSellingPriceChange = (val: number) => {
     const newSell = Math.max(0, val);
-    const currentBase = draftVariant.price || newSell;
+    const currentBase = Number(draftVariant.price || newSell);
     let newDiscount = 0;
 
     if (currentBase > 0 && newSell <= currentBase) {
@@ -751,13 +860,9 @@ export const ProductList: React.FC = () => {
   };
 
   const handleDiscountChange = (val: number) => {
-    const newDiscount = Math.max(0, Math.min(100, val));
-    const currentBase = draftVariant.price || 0;
-    let newSell = draftVariant.sellingPrice;
-
-    if (currentBase > 0) {
-      newSell = Math.round(currentBase * (1 - newDiscount / 100));
-    }
+    const newDiscount = Math.max(0, Math.min(100, Math.round(val)));
+    const currentBase = Number(draftVariant.price || 0);
+    const newSell = currentBase > 0 ? Math.round(currentBase * (1 - newDiscount / 100)) : 0;
 
     setDraftVariant((prev: any) => ({
       ...prev,
@@ -766,12 +871,154 @@ export const ProductList: React.FC = () => {
     }));
   };
 
+  const handleStartEditVariant = (index: number, item: any) => {
+    const baseP = item.prices?.[0]?.price ?? item.price ?? 1000;
+    const discPct = item.discountPercentage ?? 0;
+    const finalP = item.prices?.[0]?.discountedPrice ?? item.sellingPrice ?? (discPct > 0 ? Math.round(baseP * (1 - discPct / 100)) : baseP);
+    const mfg = item.mfgDate ? (typeof item.mfgDate === 'string' ? item.mfgDate.slice(0, 10) : '') : new Date().toISOString().slice(0, 10);
+    const exp = item.expiryDate ? (typeof item.expiryDate === 'string' ? item.expiryDate.slice(0, 10) : '') : new Date(Date.now() + 365*24*60*60*1000).toISOString().slice(0, 10);
+
+    setEditingVariantIndex(index);
+    setEditingVariantForm({
+      variantId: item.variantId || item.variant?.id,
+      id: item.id,
+      variantName: getVariantDisplayName(item),
+      price: baseP,
+      sellingPrice: finalP,
+      discountPercentage: discPct,
+      weightInGrams: item.weightInGrams || 100,
+      mfgDate: mfg,
+      expiryDate: exp
+    });
+  };
+
+  const handleCancelEditVariant = () => {
+    setEditingVariantIndex(null);
+    setEditingVariantForm(null);
+  };
+
+  const handleEditVariantBasePriceChange = (val: number) => {
+    const newBase = Math.max(0, val);
+    const discount = Number(editingVariantForm?.discountPercentage || 0);
+    const newSell = discount > 0 ? Math.round(newBase * (1 - discount / 100)) : newBase;
+    setEditingVariantForm((prev: any) => ({
+      ...prev,
+      price: newBase,
+      sellingPrice: newSell
+    }));
+  };
+
+  const handleEditVariantSellingPriceChange = (val: number) => {
+    const newSell = Math.max(0, val);
+    const currentBase = Number(editingVariantForm?.price || newSell);
+    let newDiscount = 0;
+    if (currentBase > 0 && newSell <= currentBase) {
+      newDiscount = Math.round(((currentBase - newSell) / currentBase) * 100);
+    }
+    setEditingVariantForm((prev: any) => ({
+      ...prev,
+      price: currentBase,
+      sellingPrice: newSell,
+      discountPercentage: newDiscount
+    }));
+  };
+
+  const handleEditVariantDiscountChange = (val: number) => {
+    const newDiscount = Math.max(0, Math.min(100, Math.round(val)));
+    const currentBase = Number(editingVariantForm?.price || 0);
+    const newSell = currentBase > 0 ? Math.round(currentBase * (1 - newDiscount / 100)) : 0;
+    setEditingVariantForm((prev: any) => ({
+      ...prev,
+      discountPercentage: newDiscount,
+      sellingPrice: newSell
+    }));
+  };
+
+  const handleSaveEditedVariant = async () => {
+    if (!editingVariantForm) return;
+    const baseP = Number(editingVariantForm.price || 0);
+    const sellP = Number(editingVariantForm.sellingPrice !== undefined ? editingVariantForm.sellingPrice : baseP);
+    const discPct = Number(editingVariantForm.discountPercentage || 0);
+    const weight = Number(editingVariantForm.weightInGrams || 100);
+    const vName = (editingVariantForm.variantName || 'Standard').trim();
+
+    if (baseP <= 0) {
+      alert("Validation Error: Base Price / MRP must be greater than 0.");
+      return;
+    }
+    if (sellP <= 0) {
+      alert("Validation Error: Final Selling Price must be greater than 0.");
+      return;
+    }
+    if (sellP > baseP) {
+      alert(`Validation Error: Final Selling Price (₹${sellP}) cannot be higher than Base Price / MRP (₹${baseP}).`);
+      return;
+    }
+
+    setSavingVariant(true);
+    try {
+      if (selectedProduct) {
+        // Edit mode - save directly to backend
+        const targetMasterVariantId = editingVariantForm.variantId;
+        const payload: any = {
+          price: baseP,
+          discountPercentage: discPct,
+          discountedPrice: sellP,
+          weightInGrams: weight,
+          pricePerGram: Math.round(sellP / (weight || 1))
+        };
+        if (editingVariantForm.mfgDate) payload.mfgDate = new Date(editingVariantForm.mfgDate).toISOString();
+        if (editingVariantForm.expiryDate) payload.expiryDate = new Date(editingVariantForm.expiryDate).toISOString();
+
+        await api.patch(`/products/${selectedProduct.id}/variants/${targetMasterVariantId}`, payload);
+        setMessage(`Variant updated successfully!`);
+
+        // Refresh product
+        const res: any = await api.get(`/products/${selectedProduct.id}`);
+        const updatedProduct = res.data || res;
+        setSelectedProduct(updatedProduct);
+        setProductForm((prev: any) => ({
+          ...prev,
+          varients: updatedProduct.varients || []
+        }));
+        fetchProducts();
+      } else {
+        // Create mode - update local state
+        setProductForm((prev: any) => {
+          const newVarients = [...prev.varients];
+          if (editingVariantIndex !== null && newVarients[editingVariantIndex]) {
+            newVarients[editingVariantIndex] = {
+              ...newVarients[editingVariantIndex],
+              variantName: vName,
+              price: baseP,
+              sellingPrice: sellP,
+              discountPercentage: discPct,
+              weightInGrams: weight,
+              pricePerGram: Math.round(sellP / (weight || 1)),
+              mfgDate: editingVariantForm.mfgDate,
+              expiryDate: editingVariantForm.expiryDate
+            };
+          }
+          return { ...prev, varients: newVarients };
+        });
+        setMessage("Variant updated in draft list!");
+      }
+      setEditingVariantIndex(null);
+      setEditingVariantForm(null);
+    } catch (err: any) {
+      setMessage(`Failed to update variant: ${err.message}`);
+    } finally {
+      setSavingVariant(false);
+    }
+  };
+
   const handleAddVariant = async (e: React.FormEvent) => {
     e.preventDefault();
     const vName = (draftVariant.variantName || 'Standard').trim();
 
     const baseP = Number(draftVariant.price || 0);
     const sellP = Number(draftVariant.sellingPrice !== undefined ? draftVariant.sellingPrice : baseP);
+    const discPct = Number(draftVariant.discountPercentage || 0);
 
     if (baseP <= 0) {
       alert("Validation Error: Base Price / MRP must be greater than 0.");
@@ -800,8 +1047,6 @@ export const ProductList: React.FC = () => {
     }
 
     try {
-      const computedDiscount = Math.round(((baseP - sellP) / baseP) * 100);
-
       // 1. Check if variant name already exists globally
       let matchedVar = globalVariants.find(
         (v: any) => v.name.trim().toLowerCase() === vName.toLowerCase()
@@ -832,7 +1077,7 @@ export const ProductList: React.FC = () => {
           variantName: targetVariantName,
           price: baseP,
           sellingPrice: sellP,
-          discountPercentage: computedDiscount,
+          discountPercentage: discPct,
           weightInGrams: Number(draftVariant.weightInGrams),
           mfgDate: draftVariant.mfgDate,
           expiryDate: draftVariant.expiryDate,
@@ -855,8 +1100,8 @@ export const ProductList: React.FC = () => {
           ...prev,
           variantName: '',
           price: 1000,
-          sellingPrice: 900,
-          discountPercentage: 10,
+          sellingPrice: 1000,
+          discountPercentage: 0,
           weightInGrams: 100
         }));
       }
@@ -872,13 +1117,17 @@ export const ProductList: React.FC = () => {
     setLoading(true);
     setMessage(null);
     try {
+      const baseP = Number(draftVariant.price || 0);
+      const sellP = Number(draftVariant.sellingPrice !== undefined ? draftVariant.sellingPrice : baseP);
+      const discP = Number(draftVariant.discountPercentage || 0);
       const payload = {
         variantId: targetVariantId,
-        discountPercentage: Number(draftVariant.discountPercentage || 0),
+        discountPercentage: discP,
+        discountedPrice: sellP,
         mfgDate: new Date(draftVariant.mfgDate).toISOString(),
         expiryDate: new Date(draftVariant.expiryDate).toISOString(),
-        price: Number(draftVariant.price),
-        pricePerGram: Math.round(Number(draftVariant.price) / Number(draftVariant.weightInGrams || 1)),
+        price: baseP,
+        pricePerGram: Math.round(sellP / Number(draftVariant.weightInGrams || 1)),
         weightInGrams: Number(draftVariant.weightInGrams),
       };
 
@@ -900,6 +1149,7 @@ export const ProductList: React.FC = () => {
         ...prev,
         variantName: '',
         price: 1000,
+        sellingPrice: 1000,
         discountPercentage: 0,
         weightInGrams: 100
       }));
@@ -980,8 +1230,6 @@ export const ProductList: React.FC = () => {
     }
   };
 
-
-
   const handleDeleteProduct = async (id: string) => {
     if (!window.confirm('Delete this product? All variants and combos linked will be deleted.')) return;
     try {
@@ -995,6 +1243,8 @@ export const ProductList: React.FC = () => {
 
   const openAddModal = () => {
     setSelectedProduct(null);
+    setEditingVariantIndex(null);
+    setEditingVariantForm(null);
     setPastedLink('');
     setLinkFetchSuccess(null);
     setMessage(null);
@@ -1013,13 +1263,16 @@ export const ProductList: React.FC = () => {
       mfgDate: new Date().toISOString().slice(0, 10),
       expiryDate: new Date(Date.now() + 365*24*60*60*1000).toISOString().slice(0, 10),
       weightInGrams: 100,
-      price: 1000
+      price: 1000,
+      sellingPrice: 1000
     });
     setShowProductModal(true);
   };
 
   const openEditModal = (prod: any) => {
     setSelectedProduct(prod);
+    setEditingVariantIndex(null);
+    setEditingVariantForm(null);
     setPastedLink('');
     setLinkFetchSuccess(null);
     setProductForm({
@@ -1041,7 +1294,8 @@ export const ProductList: React.FC = () => {
       mfgDate: new Date().toISOString().slice(0, 10),
       expiryDate: new Date(Date.now() + 365*24*60*60*1000).toISOString().slice(0, 10),
       weightInGrams: 100,
-      price: 1000
+      price: 1000,
+      sellingPrice: 1000
     });
     setShowProductModal(true);
   };
@@ -1178,7 +1432,7 @@ export const ProductList: React.FC = () => {
                     </tr>
                   ) : (
                     products.map((prod) => (
-                      <tr key={prod.id} onClick={() => { setSelectedProduct(prod); setShowDetailsModal(true); }} className="hover:bg-slate-50/40 cursor-pointer transition-all">
+                      <tr key={prod.id} onClick={() => openDetailsModal(prod)} className="hover:bg-slate-50/40 cursor-pointer transition-all">
                         <td className="px-6 py-4">
                           <img 
                             src={prod.thumbnailImageUrl || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=80'} 
@@ -1917,76 +2171,269 @@ export const ProductList: React.FC = () => {
 
               {/* Section 5: Variants */}
               <div id="section-variants" className="space-y-4 pt-2 border-t border-slate-100">
-                <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-2 border-b pb-2 border-slate-100 uppercase tracking-wider">
-                  <Layers className="w-4 h-4 text-primary" />
-                  5. Product Pricing Variants
-                </h4>
+                <div className="flex justify-between items-center border-b pb-2 border-slate-100">
+                  <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-2 uppercase tracking-wider">
+                    <Layers className="w-4 h-4 text-primary" />
+                    5. Product Pricing Variants
+                  </h4>
+                  <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                    {productForm.varients?.length || 0} {productForm.varients?.length === 1 ? 'Variant' : 'Variants'}
+                  </span>
+                </div>
                 
                 {/* Current Variants list */}
-                <div>
-                  <h5 className="text-slate-600 font-bold mb-2">Current Active Variants ({productForm.varients?.length || 0})</h5>
-                  <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-hidden bg-slate-50/10 shadow-sm">
+                <div className="space-y-2">
+                  <h5 className="text-slate-600 font-bold text-xs">Current Active Variants</h5>
+                  <div className="space-y-2.5">
                     {productForm.varients && productForm.varients.length > 0 ? (
                       productForm.varients.map((item: any, index: number) => {
+                        const isEditingThis = editingVariantIndex === index;
                         const vName = getVariantDisplayName(item);
                         const vId = item.variantId || item.variant?.id;
-                        const basePrice = item.prices?.[0]?.price || item.price || 0;
-                        return (
-                          <div key={index} className="flex justify-between items-center p-3 bg-white text-xs">
-                            <div>
-                              <span className="font-bold text-slate-800">{vName}</span>
-                              <span className="text-[10px] text-slate-400 font-semibold block mt-0.5">
-                                Weight: {item.weightInGrams}g | Discount: {item.discountPercentage}%
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <div className="text-right">
-                                <span className="font-extrabold text-slate-800 text-xs font-mono">₹{basePrice}</span>
+                        const basePrice = Number(item.prices?.[0]?.price ?? item.price ?? 0);
+                        const discPct = Number(item.discountPercentage ?? 0);
+                        const finalPrice = Number(item.prices?.[0]?.discountedPrice ?? item.sellingPrice ?? (discPct > 0 ? Math.round(basePrice * (1 - discPct / 100)) : basePrice));
+
+                        if (isEditingThis && editingVariantForm) {
+                          return (
+                            <div key={index} className="p-4 bg-indigo-50/40 border-2 border-indigo-200 rounded-2xl space-y-3.5 shadow-sm">
+                              <div className="flex justify-between items-center border-b border-indigo-100 pb-2">
+                                <span className="text-xs font-extrabold text-indigo-900 flex items-center gap-1.5">
+                                  <Edit className="w-3.5 h-3.5 text-indigo-600" />
+                                  Edit Variant: {editingVariantForm.variantName || `Variant #${index + 1}`}
+                                </span>
+                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100/70 px-2 py-0.5 rounded-full">
+                                  Editing
+                                </span>
                               </div>
-                              <button
-                                type="button"
-                                disabled={loading}
-                                onClick={() => handleDeleteVariant(vId)}
-                                className="p-1.5 bg-red-50 text-danger hover:bg-red-100 rounded-lg transition-all"
-                                title="Delete Variant"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+
+                              <div>
+                                <label className="block text-slate-500 font-bold mb-1 text-[11px]">Variant Name</label>
+                                <input 
+                                  type="text" 
+                                  value={editingVariantForm.variantName || ''} 
+                                  onChange={(e) => setEditingVariantForm({ ...editingVariantForm, variantName: e.target.value })} 
+                                  placeholder="e.g. Standard, Red 128GB, Portable Pack"
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 outline-none font-semibold text-slate-700 focus:border-primary text-xs"
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                                <div>
+                                  <label className="block text-slate-500 font-bold mb-1 text-[11px]">Base Price / MRP (₹)</label>
+                                  <input 
+                                    type="number" 
+                                    min="0"
+                                    value={editingVariantForm.price || ''} 
+                                    onChange={(e) => handleEditVariantBasePriceChange(Number(e.target.value))} 
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 outline-none focus:border-primary font-semibold text-slate-700" 
+                                    placeholder="e.g. 1499"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-slate-500 font-bold mb-1 text-[11px]">Final / Selling Price (₹)</label>
+                                  <input 
+                                    type="number" 
+                                    min="0"
+                                    value={editingVariantForm.sellingPrice !== undefined ? editingVariantForm.sellingPrice : ''} 
+                                    onChange={(e) => handleEditVariantSellingPriceChange(Number(e.target.value))} 
+                                    className={`w-full bg-white border rounded-xl px-3 py-2 outline-none font-extrabold ${
+                                      Number(editingVariantForm.sellingPrice) > Number(editingVariantForm.price)
+                                        ? 'border-red-400 bg-red-50/50 text-red-600'
+                                        : 'border-slate-200 text-emerald-600 focus:border-primary'
+                                    }`} 
+                                    placeholder="e.g. 999"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-slate-500 font-bold mb-1 text-[11px]">Discount (%)</label>
+                                  <div className="relative">
+                                    <input 
+                                      type="number" 
+                                      min="0"
+                                      max="100"
+                                      value={editingVariantForm.discountPercentage || 0} 
+                                      onChange={(e) => handleEditVariantDiscountChange(Number(e.target.value))} 
+                                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 outline-none font-bold text-slate-700 pr-10" 
+                                      placeholder="0"
+                                    />
+                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 font-extrabold text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                                      OFF
+                                    </span>
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="block text-slate-500 font-bold mb-1 text-[11px]">Weight (Grams)</label>
+                                  <input 
+                                    type="number" 
+                                    min="0"
+                                    value={editingVariantForm.weightInGrams || ''} 
+                                    onChange={(e) => setEditingVariantForm({ ...editingVariantForm, weightInGrams: Number(e.target.value) })} 
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 outline-none font-semibold text-slate-700" 
+                                    placeholder="e.g. 100"
+                                  />
+                                </div>
+                              </div>
+
+                              {Number(editingVariantForm.sellingPrice) > Number(editingVariantForm.price) && (
+                                <div className="flex items-center gap-1.5 p-2 bg-red-50 border border-red-200 rounded-xl text-red-700 font-bold text-[11px]">
+                                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                                  <span>Final Selling Price (₹{editingVariantForm.sellingPrice}) cannot exceed Base MRP (₹{editingVariantForm.price}).</span>
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                <div>
+                                  <label className="block text-slate-500 font-bold mb-1 text-[11px]">Mfg Date / Release Date</label>
+                                  <input 
+                                    type="date" 
+                                    value={editingVariantForm.mfgDate || ''} 
+                                    onChange={(e) => setEditingVariantForm({ ...editingVariantForm, mfgDate: e.target.value })} 
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 outline-none text-xs" 
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-slate-500 font-bold mb-1 text-[11px]">Expiry Date / Warranty Expiry</label>
+                                  <input 
+                                    type="date" 
+                                    value={editingVariantForm.expiryDate || ''} 
+                                    onChange={(e) => setEditingVariantForm({ ...editingVariantForm, expiryDate: e.target.value })} 
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 outline-none text-xs" 
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="flex justify-end gap-2 pt-2 border-t border-indigo-100">
+                                <button
+                                  type="button"
+                                  onClick={handleCancelEditVariant}
+                                  className="px-3.5 py-1.5 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-100 text-xs"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={savingVariant}
+                                  onClick={handleSaveEditedVariant}
+                                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                                >
+                                  {savingVariant ? (
+                                    <>
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Saving...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Check className="w-3.5 h-3.5" />
+                                      <span>Save Variant</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-white border border-slate-200 rounded-xl text-xs shadow-2xs hover:border-slate-300 transition-all">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-slate-800 text-xs">{vName}</span>
+                                {discPct > 0 && (
+                                  <span className="px-2 py-0.5 bg-rose-50 text-rose-600 font-extrabold text-[10px] rounded-full border border-rose-100">
+                                    {discPct}% OFF
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-400 font-semibold mt-1">
+                                <span>Weight: <strong className="text-slate-600">{item.weightInGrams || 100}g</strong></span>
+                                {item.mfgDate && (
+                                  <span>Mfg: <strong className="text-slate-600">{String(item.mfgDate).slice(0, 10)}</strong></span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                              <div className="text-right">
+                                <div className="flex items-baseline gap-1.5 justify-end">
+                                  {discPct > 0 && basePrice > finalPrice && (
+                                    <span className="text-[11px] text-slate-400 font-semibold line-through">
+                                      ₹{basePrice}
+                                    </span>
+                                  )}
+                                  <span className="font-extrabold text-emerald-600 text-sm">
+                                    ₹{finalPrice}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-slate-400 font-medium block">
+                                  Base MRP: ₹{basePrice}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditVariant(index, item)}
+                                  className="p-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg transition-all flex items-center gap-1 text-[11px] font-bold px-2.5"
+                                  title="Edit variant details & price"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={loading || (productForm.varients && productForm.varients.length <= 1)}
+                                  onClick={() => handleDeleteVariant(vId)}
+                                  className={`p-1.5 rounded-lg transition-all ${
+                                    productForm.varients && productForm.varients.length <= 1
+                                      ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                                      : 'bg-red-50 text-danger hover:bg-red-100 cursor-pointer'
+                                  }`}
+                                  title={
+                                    productForm.varients && productForm.varients.length <= 1
+                                      ? 'Cannot delete the only variant. Click Edit to change its price or details.'
+                                      : 'Delete Variant'
+                                  }
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
                       })
                     ) : (
-                      <div className="p-4 text-center text-slate-400 text-xs bg-white">
-                        No variants added yet. You must add at least one variant before creating this product.
+                      <div className="p-4 text-center text-slate-400 text-xs bg-white rounded-xl border border-dashed border-slate-200">
+                        No variants added yet. Add a variant below before saving.
                       </div>
                     )}
                   </div>
                 </div>
 
                 {/* Add Variant card */}
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
                   <h5 className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
                     <Plus className="w-4 h-4 text-primary" />
                     Map New Variant Option
                   </h5>
                   
                   <div>
-                    <label className="block text-slate-500 font-bold mb-1">Variant Name (Free Text)</label>
+                    <label className="block text-slate-500 font-bold mb-1 text-[11px]">Variant Name (Free Text)</label>
                     <input 
                       type="text" 
                       value={draftVariant.variantName || ''} 
                       onChange={(e) => setDraftVariant({...draftVariant, variantName: e.target.value})} 
                       placeholder="e.g. Standard, Red 128GB, Portable Pack"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 outline-none font-semibold text-slate-700 focus:border-primary"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 outline-none font-semibold text-slate-700 focus:border-primary text-xs"
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
                     <div>
                       <label className="block text-slate-500 font-bold mb-1 text-[11px]">Base Price / MRP (₹)</label>
                       <input 
                         type="number" 
+                        min="0"
                         value={draftVariant.price || ''} 
                         onChange={(e) => handleBasePriceChange(Number(e.target.value))} 
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 outline-none focus:border-primary font-semibold text-slate-700" 
@@ -1997,6 +2444,7 @@ export const ProductList: React.FC = () => {
                       <label className="block text-slate-500 font-bold mb-1 text-[11px]">Final / Selling Price (₹)</label>
                       <input 
                         type="number" 
+                        min="0"
                         value={draftVariant.sellingPrice !== undefined ? draftVariant.sellingPrice : ''} 
                         onChange={(e) => handleSellingPriceChange(Number(e.target.value))} 
                         className={`w-full bg-white border rounded-xl px-3 py-2 outline-none font-extrabold ${
@@ -2010,6 +2458,8 @@ export const ProductList: React.FC = () => {
                       <div className="relative">
                         <input 
                           type="number" 
+                          min="0"
+                          max="100"
                           value={draftVariant.discountPercentage || 0} 
                           onChange={(e) => handleDiscountChange(Number(e.target.value))} 
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 outline-none font-bold text-slate-700 pr-10" 
@@ -2024,6 +2474,7 @@ export const ProductList: React.FC = () => {
                       <label className="block text-slate-500 font-bold mb-1 text-[11px]">Weight (Grams)</label>
                       <input 
                         type="number" 
+                        min="0"
                         value={draftVariant.weightInGrams || ''} 
                         onChange={(e) => setDraftVariant({...draftVariant, weightInGrams: Number(e.target.value)})} 
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 outline-none font-semibold text-slate-700" 
@@ -2040,9 +2491,9 @@ export const ProductList: React.FC = () => {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                     <div>
-                      <label className="block text-slate-500 font-bold mb-1">Mfg Date / Release Date</label>
+                      <label className="block text-slate-500 font-bold mb-1 text-[11px]">Mfg Date / Release Date</label>
                       <input 
                         type="date" 
                         value={draftVariant.mfgDate} 
@@ -2051,7 +2502,7 @@ export const ProductList: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-500 font-bold mb-1">Expiry Date / Warranty Expiry</label>
+                      <label className="block text-slate-500 font-bold mb-1 text-[11px]">Expiry Date / Warranty Expiry</label>
                       <input 
                         type="date" 
                         value={draftVariant.expiryDate} 
@@ -2066,7 +2517,7 @@ export const ProductList: React.FC = () => {
                       type="button" 
                       onClick={handleAddVariant} 
                       disabled={loading}
-                      className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+                      className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50 text-xs"
                     >
                       {loading ? (
                         <>
@@ -2436,10 +2887,6 @@ export const ProductList: React.FC = () => {
                         <span className="font-bold text-slate-800">{selectedProduct.originCountry || 'India'}</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 block font-semibold">HSN TAX CODE</span>
-                        <span className="font-mono font-bold text-slate-800">{selectedProduct.hsn?.hsnCode || 'N/A'}</span>
-                      </div>
-                      <div>
                         <span className="text-[10px] text-slate-400 block font-semibold">ATTRIBUTES (SPECS)</span>
                         <span className="font-bold text-slate-800">{selectedProduct.attributes || 'N/A'}</span>
                       </div>
@@ -2473,29 +2920,241 @@ export const ProductList: React.FC = () => {
                 </div>
               </div>
 
-              {/* Product Variants List */}
+              {/* Product Variants List with Inline Price Updates */}
               <div className="space-y-3">
-                <h4 className="font-bold text-slate-700 text-xs">Active Pricing Variants ({selectedProduct.varients?.length || 0})</h4>
-                <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-hidden bg-slate-50/30">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-amber-500" />
+                    Active Pricing Variants ({selectedProduct.varients?.length || 0})
+                  </h4>
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    You can update prices directly below
+                  </span>
+                </div>
+
+                <div className="space-y-2.5">
                   {selectedProduct.varients && selectedProduct.varients.length > 0 ? (
-                    selectedProduct.varients.map((item: any) => (
-                      <div key={item.id} className="flex justify-between items-center p-3.5 text-xs bg-white">
-                        <div>
-                          <span className="font-bold text-slate-800">{getVariantDisplayName(item)}</span>
-                          <span className="text-[10px] text-slate-400 font-semibold block mt-0.5">
-                            Discount: {item.discountPercentage}% | Warranty / Validity: {item.mfgDate?.slice(0, 10)} to {item.expiryDate?.slice(0, 10)}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="font-extrabold text-slate-800 text-sm">₹{item.prices?.[0]?.price || 'N/A'}</span>
-                          {item.discountPercentage > 0 && (
-                            <span className="text-[9px] text-rose-500 block font-semibold">Special Offer</span>
+                    selectedProduct.varients.map((item: any) => {
+                      const isEditingPrice = editingDetailVariantId === item.id;
+                      const basePrice = Number(item.prices?.[0]?.price ?? item.price ?? 0);
+                      const discPct = Number(item.discountPercentage ?? 0);
+                      const finalPrice = Number(item.prices?.[0]?.discountedPrice ?? (discPct > 0 ? Math.round(basePrice * (1 - discPct / 100)) : basePrice));
+                      const inputState = detailVariantPriceInputs[item.id] || { price: basePrice, discountPercentage: discPct, finalPrice };
+                      const currentReg = inputState.price ?? basePrice;
+                      const currentDisc = inputState.discountPercentage ?? discPct;
+                      const currentFinal = inputState.finalPrice ?? finalPrice;
+                      const isSavingThis = savingDetailVariantId === item.id;
+
+                      return (
+                        <div key={item.id} className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2.5 text-xs shadow-2xs hover:border-slate-300 transition-all">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-slate-800 text-xs">{getVariantDisplayName(item)}</span>
+                                {discPct > 0 && (
+                                  <span className="px-2 py-0.5 bg-rose-50 text-rose-600 font-extrabold text-[10px] rounded-full border border-rose-100">
+                                    {discPct}% OFF
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-semibold block mt-0.5">
+                                Weight: {item.weightInGrams || 100}g {item.mfgDate ? `| Mfg: ${String(item.mfgDate).slice(0, 10)}` : ''} {item.expiryDate ? `| Exp: ${String(item.expiryDate).slice(0, 10)}` : ''}
+                              </span>
+                            </div>
+
+                            {!isEditingPrice && (
+                              <div className="flex items-center gap-3">
+                                <div className="text-right">
+                                  <div className="flex items-baseline gap-1.5 justify-end">
+                                    {discPct > 0 && basePrice > finalPrice && (
+                                      <span className="text-[11px] text-slate-400 font-semibold line-through">
+                                        ₹{basePrice}
+                                      </span>
+                                    )}
+                                    <span className="font-extrabold text-emerald-600 text-sm">
+                                      ₹{finalPrice}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-medium block">
+                                    Base MRP: ₹{basePrice}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDetailVariantPriceInputs((prev) => ({
+                                      ...prev,
+                                      [item.id]: { price: basePrice, discountPercentage: discPct, finalPrice }
+                                    }));
+                                    setEditingDetailVariantId(item.id);
+                                  }}
+                                  className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                                >
+                                  <Edit className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>Update Price</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Inline Price Editor Form */}
+                          {isEditingPrice && (
+                            <div className="pt-1 space-y-3 bg-amber-50/30 p-3 rounded-xl border border-amber-200/80">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                {/* Regular Price (MRP) */}
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 block mb-1">REGULAR MRP (₹)</label>
+                                  <div className="relative">
+                                    <span className="absolute left-2.5 top-2 text-xs font-bold text-slate-400">₹</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={currentReg}
+                                      onChange={(e) => {
+                                        const newReg = Math.max(0, parseFloat(e.target.value) || 0);
+                                        const disc = currentDisc || 0;
+                                        const newFinal = disc > 0 ? Math.round(newReg * (1 - disc / 100)) : newReg;
+                                        setDetailVariantPriceInputs((prev) => ({
+                                          ...prev,
+                                          [item.id]: {
+                                            ...prev[item.id],
+                                            price: newReg,
+                                            finalPrice: newFinal,
+                                            discountPercentage: disc
+                                          }
+                                        }));
+                                      }}
+                                      className="w-full bg-white border border-slate-200 rounded-xl pl-6 pr-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-amber-500"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Final Selling Price */}
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 block mb-1">FINAL SELLING PRICE (₹)</label>
+                                  <div className="relative">
+                                    <span className="absolute left-2.5 top-2 text-xs font-bold text-slate-400">₹</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={currentFinal}
+                                      onChange={(e) => {
+                                        const newFinal = Math.max(0, parseFloat(e.target.value) || 0);
+                                        const reg = currentReg || basePrice;
+                                        let calculatedPct = 0;
+                                        if (reg > 0 && newFinal <= reg) {
+                                          calculatedPct = Math.round(((reg - newFinal) / reg) * 100);
+                                        }
+                                        setDetailVariantPriceInputs((prev) => ({
+                                          ...prev,
+                                          [item.id]: {
+                                            ...prev[item.id],
+                                            price: reg,
+                                            finalPrice: newFinal,
+                                            discountPercentage: calculatedPct
+                                          }
+                                        }));
+                                      }}
+                                      className="w-full bg-white border border-emerald-200 rounded-xl pl-6 pr-2.5 py-1.5 text-xs font-extrabold text-emerald-600 outline-none focus:border-emerald-500"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Discount Offer % */}
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 block mb-1">DISCOUNT OFFER (%)</label>
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="100"
+                                      value={currentDisc}
+                                      onChange={(e) => {
+                                        const newPct = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                                        const reg = currentReg || basePrice;
+                                        const newFinal = Math.round(reg * (1 - newPct / 100));
+                                        setDetailVariantPriceInputs((prev) => ({
+                                          ...prev,
+                                          [item.id]: {
+                                            ...prev[item.id],
+                                            price: reg,
+                                            discountPercentage: newPct,
+                                            finalPrice: newFinal
+                                          }
+                                        }));
+                                      }}
+                                      className="w-full bg-white border border-slate-200 rounded-xl pl-2.5 pr-7 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-amber-500"
+                                    />
+                                    <span className="absolute right-2.5 top-2 text-xs font-bold text-slate-400">%</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Presets */}
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-[10px] font-bold text-slate-400 mr-1">Presets:</span>
+                                {[0, 5, 10, 15, 20, 25, 30, 50].map((pct) => (
+                                  <button
+                                    key={pct}
+                                    type="button"
+                                    onClick={() => {
+                                      const reg = currentReg || basePrice;
+                                      const newFinal = Math.round(reg * (1 - pct / 100));
+                                      setDetailVariantPriceInputs((prev) => ({
+                                        ...prev,
+                                        [item.id]: {
+                                          ...prev[item.id],
+                                          price: reg,
+                                          discountPercentage: pct,
+                                          finalPrice: newFinal
+                                        }
+                                      }));
+                                    }}
+                                    className={`px-2 py-0.5 text-[10px] font-bold rounded-lg transition-all ${
+                                      currentDisc === pct 
+                                        ? 'bg-amber-500 text-white shadow-sm' 
+                                        : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    {pct === 0 ? 'No Offer' : `${pct}%`}
+                                  </button>
+                                ))}
+                              </div>
+
+                              <div className="flex justify-end gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingDetailVariantId(null)}
+                                  className="px-3 py-1.5 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-100 text-xs"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isSavingThis}
+                                  onClick={() => handleSaveDetailVariantPrice(item)}
+                                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                                >
+                                  {isSavingThis ? (
+                                    <>
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Saving...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Check className="w-3.5 h-3.5" />
+                                      <span>Save Price</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
                           )}
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
-                    <div className="p-4 text-center text-slate-400 text-xs bg-white">
+                    <div className="p-4 text-center text-slate-400 text-xs bg-white rounded-xl border">
                       No active pricing variants linked to this product.
                     </div>
                   )}

@@ -261,65 +261,95 @@ const createManyProducts = async (
 };
 
 const getProductById = async (id: string) => {
-  const product = await prisma.product.findUnique({
-    where: { id },
-    include: {
-      hsn: true,
-      brand: true,
-      reviews: {
-        where: { approved: true },
-        include: { createdBy: { include: { user: true } } },
-      },
-      varients: {
-        where: { active: true },
-        select: {
-          id: true,
-          pricePerGram: true,
-          weightInGrams: true,
-          warehouseStocks: { where: { productCount: { gt: 0 } } },
-          discountPercentage: true,
-          mfgDate: true,
-          expiryDate: true,
-          variant: {
-            select: {
-              id: true,
-              name: true,
-              subCategory: {
-                select: {
-                  id: true,
-                  name: true,
-                  category: { select: { id: true, name: true } },
-                },
+  let targetProductId = id;
+  const includeObj = {
+    hsn: true,
+    brand: true,
+    reviews: {
+      where: { approved: true },
+      include: { createdBy: { include: { user: true } } },
+    },
+    varients: {
+      where: { active: true },
+      select: {
+        id: true,
+        pricePerGram: true,
+        weightInGrams: true,
+        warehouseStocks: { where: { productCount: { gt: 0 } } },
+        discountPercentage: true,
+        mfgDate: true,
+        expiryDate: true,
+        variant: {
+          select: {
+            id: true,
+            name: true,
+            subCategory: {
+              select: {
+                id: true,
+                name: true,
+                category: { select: { id: true, name: true } },
               },
             },
           },
-          prices: { orderBy: { createdAt: "desc" }, take: 1 },
         },
-      },
-      combos: {
-        where: { active: true },
-        select: {
-          id: true,
-          name: true,
-          weightInGrams: true,
-          description: true,
-          imageUrl: true,
-          warehouseStocks: { where: { comboCount: { gt: 0 } } },
-          items: {
-            select: {
-              quantity: true,
-              productVariant: {
-                select: {
-                  variant: { select: { name: true, description: true } },
-                },
-              },
-            },
-          },
-          prices: { orderBy: { createdAt: "desc" }, take: 1 },
-        },
+        prices: { orderBy: { createdAt: "desc" }, take: 1 },
       },
     },
+    combos: {
+      where: { active: true },
+      select: {
+        id: true,
+        name: true,
+        weightInGrams: true,
+        description: true,
+        imageUrl: true,
+        warehouseStocks: { where: { comboCount: { gt: 0 } } },
+        items: {
+          select: {
+            quantity: true,
+            productVariant: {
+              select: {
+                variant: { select: { name: true, description: true } },
+              },
+            },
+          },
+        },
+        prices: { orderBy: { createdAt: "desc" }, take: 1 },
+      },
+    },
+  } as const;
+
+  let product = await prisma.product.findUnique({
+    where: { id: targetProductId },
+    include: includeObj,
   });
+
+  if (!product) {
+    const pv = await prisma.productVariant.findUnique({
+      where: { id },
+      select: { productId: true },
+    });
+    if (pv) {
+      targetProductId = pv.productId;
+      product = await prisma.product.findUnique({
+        where: { id: targetProductId },
+        include: includeObj,
+      });
+    } else {
+      const pc = await prisma.productCombo.findUnique({
+        where: { id },
+        select: { productId: true },
+      });
+      if (pc) {
+        targetProductId = pc.productId;
+        product = await prisma.product.findUnique({
+          where: { id: targetProductId },
+          include: includeObj,
+        });
+      }
+    }
+  }
+
   if (!product) throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
 
   await prisma.product.update({
@@ -993,33 +1023,14 @@ const createProductVariant = async (
   payload: Prisma.ProductVariantUncheckedCreateWithoutProductInput & {
     productId: string;
     price: number;
+    discountedPrice?: number;
   },
 ) => {
-  const { price, ...data } = payload;
+  const { price, discountedPrice, ...data } = payload;
+  const effectiveDiscounted = typeof discountedPrice !== "undefined"
+    ? Math.round(discountedPrice)
+    : Math.round(price * (1 - (payload.discountPercentage || 0) / 100));
 
-  // return prisma.productVariant.upsert({
-  //   where: {
-  //     productId_variantId: {
-  //       productId: payload.productId,
-  //       variantId: payload.variantId,
-  //     },
-  //   },
-  //   update: {
-  //     ...data,
-  //     active: true,
-  //     prices: {
-  //       updateMany: {
-  //         where: { active: true },
-  //         data: { active: false },
-  //       },
-  //       create: { price },
-  //     },
-  //   },
-  //   create: {
-  //     ...data,
-  //     prices: { create: { price } },
-  //   },
-  // });
   return prisma.$transaction(async (tx) => {
     // Step 1: upsert variant + price
     const variant = await tx.productVariant.upsert({
@@ -1037,12 +1048,12 @@ const createProductVariant = async (
             where: { active: true },
             data: { active: false },
           },
-          create: { price },
+          create: { price, discountedPrice: effectiveDiscounted },
         },
       },
       create: {
         ...data,
-        prices: { create: { price } },
+        prices: { create: { price, discountedPrice: effectiveDiscounted } },
       },
       include: { prices: true, warehouseStocks: true },
     });
@@ -1056,6 +1067,7 @@ const updateProductVariant = async (
   vairantId: string,
   payload: Partial<ProductVariant> & {
     price?: number;
+    discountedPrice?: number;
   },
 ) => {
   const productVariant = await prisma.productVariant.findUnique({
@@ -1065,7 +1077,7 @@ const updateProductVariant = async (
     throw new ApiError(httpStatus.NOT_FOUND, "Variant not found");
   else
     return prisma.$transaction(async (tx) => {
-      const { price, ...data } = payload;
+      const { price, discountedPrice, ...data } = payload;
       const effectiveDiscount =
         typeof payload.discountPercentage !== "undefined"
           ? payload.discountPercentage
@@ -1080,9 +1092,11 @@ const updateProductVariant = async (
           },
           data: { active: false },
         });
-        const calcDiscounted = Math.round(
-          price * (1 - (effectiveDiscount || 0) / 100),
-        );
+        const calcDiscounted = typeof discountedPrice !== "undefined"
+          ? Math.round(discountedPrice)
+          : Math.round(
+              price * (1 - (effectiveDiscount || 0) / 100),
+            );
         await tx.price.create({
           data: {
             productVariantId: productVariant.id,
@@ -1090,7 +1104,7 @@ const updateProductVariant = async (
             discountedPrice: calcDiscounted,
           },
         });
-      } else if (typeof payload.discountPercentage !== "undefined") {
+      } else if (typeof discountedPrice !== "undefined" || typeof payload.discountPercentage !== "undefined") {
         const prices = await tx.price.findMany({
           where: { productVariantId: productVariant.id, active: true },
         });
@@ -1100,9 +1114,11 @@ const updateProductVariant = async (
             tx.price.update({
               where: { id: p.id },
               data: {
-                discountedPrice: Math.round(
-                  p.price * (1 - (payload.discountPercentage || 0) / 100),
-                ),
+                discountedPrice: typeof discountedPrice !== "undefined"
+                  ? Math.round(discountedPrice)
+                  : Math.round(
+                      p.price * (1 - (payload.discountPercentage || 0) / 100),
+                    ),
               },
             }),
           ),
