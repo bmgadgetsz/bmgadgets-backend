@@ -47,12 +47,20 @@ export function formatWhatsAppOrderMessage(order: any): string {
         const truncatedName = truncateText(rawName, 20);
 
         const qty = item.quantity || 1;
-        const unitPrice =
-          typeof item.price === "number"
-            ? item.price
-            : (item.price?.discountedPrice || item.price?.sellingPrice || item.price?.price || 0);
+        let rawUnitPrice = 0;
+        if (typeof item.price === "number") {
+          rawUnitPrice = item.price;
+        } else if (item.price) {
+          rawUnitPrice =
+            typeof item.price.discountedPrice === "number" && item.price.discountedPrice > 0
+              ? item.price.discountedPrice
+              : (item.price.sellingPrice || item.price.price || 0);
+        } else if (typeof item.unitPrice === "number") {
+          rawUnitPrice = item.unitPrice;
+        }
 
-        const subtotal = unitPrice * qty;
+        const unitPrice = Math.round(rawUnitPrice);
+        const subtotal = Math.round(unitPrice * qty);
 
         return (idx + 1) + ". *" + truncatedName + "*\n   Qty: " + qty + " | Rs." + subtotal.toLocaleString("en-IN");
       })
@@ -61,18 +69,23 @@ export function formatWhatsAppOrderMessage(order: any): string {
     itemsFormatted = "- *1x Order Item*";
   }
 
-  // Financial details
-  const subtotal = order.subtotal || 0;
-  const shippingCost = order.shippingCost || 0;
-  const discount = order.couponDiscount || 0;
+  // Financial details (all prices are tax-inclusive; grandTotal is computed dynamically)
+  const subtotal = typeof order.subtotal === "number" ? order.subtotal : 0;
+  const shippingCost = typeof order.shippingCost === "number" ? order.shippingCost : 0;
+  const discount = typeof order.couponDiscount === "number" ? order.couponDiscount : 0;
+  
+  const computedTotal = subtotal + shippingCost - discount;
   const grandTotal =
-    order.totalAmount ||
-    (subtotal + shippingCost - discount) ||
-    items.reduce((acc: number, item: any) => {
-      const p = typeof item.price === "number" ? item.price : (item.price?.discountedPrice || item.price?.sellingPrice || 0);
-      return acc + (p * (item.quantity || 1));
-    }, 0);
+    order.totalAmount !== undefined && order.totalAmount !== null
+      ? order.totalAmount
+      : (computedTotal > 0
+          ? computedTotal
+          : items.reduce((acc: number, item: any) => {
+              const p = typeof item.price === "number" ? item.price : (item.price?.discountedPrice || item.price?.sellingPrice || item.price?.price || 0);
+              return acc + (Math.round(p) * (item.quantity || 1));
+            }, 0) + shippingCost - discount);
 
+  const cleanGrandTotal = Math.round(grandTotal);
   const paymentType = order.paymentType === "COD" ? "Cash on Delivery (COD)" : "Prepaid Online";
 
   const lines = [
@@ -87,7 +100,7 @@ export function formatWhatsAppOrderMessage(order: any): string {
     "*Order Items:*",
     itemsFormatted,
     "",
-    "*Total Amount:* Rs." + Number(grandTotal).toLocaleString("en-IN"),
+    "*Total Amount:* Rs." + cleanGrandTotal.toLocaleString("en-IN"),
     "",
     "*Track Your Order:*",
     "https://" + trackLink,

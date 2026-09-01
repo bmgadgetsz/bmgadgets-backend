@@ -1051,9 +1051,7 @@ const getVendorDashboardStats = async (
  * Sales time series: returns [{ date: 'YYYY-MM-DD', revenue, orders }]
  */
 const getSalesTimeSeries = async (vendorId: string, days = 30) => {
-  if (!vendorId)
-    throw new ApiError(httpStatus.BAD_REQUEST, "vendorId required");
-
+  const isAll = !vendorId || vendorId === 'all';
   const end = new Date();
   const start = startOfDay(subDays(end, days - 1));
 
@@ -1078,12 +1076,12 @@ const getSalesTimeSeries = async (vendorId: string, days = 30) => {
   const variantItems = await prisma.orderItem.findMany({
     where: {
       orderId: { in: orderIds },
-      price: { productVariant: { is: { product: { createdById: vendorId } } } },
+      ...(isAll ? {} : { price: { productVariant: { is: { product: { createdById: vendorId } } } } }),
     },
     select: {
       orderId: true,
       quantity: true,
-      price: { select: { price: true } },
+      price: { select: { price: true, discountedPrice: true } },
       order: { select: { createdAt: true } },
     },
   });
@@ -1091,12 +1089,12 @@ const getSalesTimeSeries = async (vendorId: string, days = 30) => {
   const comboItems = await prisma.orderItem.findMany({
     where: {
       orderId: { in: orderIds },
-      price: { productCombo: { is: { product: { createdById: vendorId } } } },
+      ...(isAll ? {} : { price: { productCombo: { is: { product: { createdById: vendorId } } } } }),
     },
     select: {
       orderId: true,
       quantity: true,
-      price: { select: { price: true } },
+      price: { select: { price: true, discountedPrice: true } },
       order: { select: { createdAt: true } },
     },
   });
@@ -1107,7 +1105,8 @@ const getSalesTimeSeries = async (vendorId: string, days = 30) => {
   for (const it of allItems) {
     const day = it.order.createdAt.toISOString().slice(0, 10);
     const entry = map.get(day) ?? { revenue: 0, orders: new Set<string>() };
-    entry.revenue += (it.price?.price ?? 0) * (it.quantity ?? 0);
+    const unitPrice = (it.price?.discountedPrice && it.price.discountedPrice > 0 ? it.price.discountedPrice : it.price?.price) ?? 0;
+    entry.revenue += unitPrice * (it.quantity ?? 0);
     entry.orders.add(it.orderId);
     map.set(day, entry);
   }
@@ -1347,8 +1346,7 @@ const getTopProducts = async (vendorId: string, limit = 10, days = 30) => {
 };
 
 const getOrdersByStatus = async (vendorId: string) => {
-  if (!vendorId)
-    throw new ApiError(httpStatus.BAD_REQUEST, "vendorId required");
+  const isAll = !vendorId || vendorId === 'all';
 
   const orders = await prisma.order.findMany({
     where: { status: { not: OrderStatus.CANCELLED } },
@@ -1356,32 +1354,35 @@ const getOrdersByStatus = async (vendorId: string) => {
   });
   if (orders.length === 0) return [];
 
-  const orderIds = orders.map((o) => o.id);
+  let vendorOrderIds: Set<string> | null = null;
+  if (!isAll) {
+    const orderIds = orders.map((o) => o.id);
 
-  const variantMatches = await prisma.orderItem.findMany({
-    where: {
-      orderId: { in: orderIds },
-      price: { productVariant: { is: { product: { createdById: vendorId } } } },
-    },
-    select: { orderId: true },
-  });
+    const variantMatches = await prisma.orderItem.findMany({
+      where: {
+        orderId: { in: orderIds },
+        price: { productVariant: { is: { product: { createdById: vendorId } } } },
+      },
+      select: { orderId: true },
+    });
 
-  const comboMatches = await prisma.orderItem.findMany({
-    where: {
-      orderId: { in: orderIds },
-      price: { productCombo: { is: { product: { createdById: vendorId } } } },
-    },
-    select: { orderId: true },
-  });
+    const comboMatches = await prisma.orderItem.findMany({
+      where: {
+        orderId: { in: orderIds },
+        price: { productCombo: { is: { product: { createdById: vendorId } } } },
+      },
+      select: { orderId: true },
+    });
 
-  const vendorOrderIds = new Set<string>([
-    ...variantMatches.map((m) => m.orderId),
-    ...comboMatches.map((m) => m.orderId),
-  ]);
+    vendorOrderIds = new Set<string>([
+      ...variantMatches.map((m) => m.orderId),
+      ...comboMatches.map((m) => m.orderId),
+    ]);
+  }
 
   const statusCounts = new Map<string, number>();
   for (const o of orders) {
-    if (!vendorOrderIds.has(o.id)) continue;
+    if (vendorOrderIds && !vendorOrderIds.has(o.id)) continue;
     statusCounts.set(o.status, (statusCounts.get(o.status) ?? 0) + 1);
   }
 

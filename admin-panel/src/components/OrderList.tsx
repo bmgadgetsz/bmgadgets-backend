@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../services/api';
 import { formatWhatsAppOrderMessage, formatWhatsAppDispatchMessage, formatWhatsAppDeliveryReviewMessage, getWhatsAppUrl } from '../utils/whatsapp';
+import { OrderSlipModal } from './OrderSlipModal';
 import { 
   Truck, 
   ChevronRight, 
@@ -17,11 +18,11 @@ import {
   Search,
   RefreshCw,
   PackageCheck,
-  Filter,
   DollarSign,
   MessageSquare,
   ExternalLink,
-  Send
+  Send,
+  Printer
 } from 'lucide-react';
 
 export const OrderList: React.FC = () => {
@@ -46,6 +47,7 @@ export const OrderList: React.FC = () => {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [showPickupModal, setShowPickupModal] = useState(false);
   const [showManualDispatchModal, setShowManualDispatchModal] = useState(false);
+  const [showSlipModal, setShowSlipModal] = useState(false);
   
   // WhatsApp Notification State
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
@@ -281,47 +283,47 @@ export const OrderList: React.FC = () => {
   const totalPages = Math.ceil((totalOrders || orders.length) / limit) || 1;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Top Banner / Summary Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-4">
-          <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-            <Truck className="w-5.5 h-5.5" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3.5 w-full max-w-full min-w-0">
+        <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100 shadow-xs flex items-center gap-2.5 sm:gap-3.5 min-w-0 overflow-hidden">
+          <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+            <Truck className="w-4 h-4 sm:w-5.5 sm:h-5.5" />
           </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Orders</p>
-            <h3 className="text-xl font-black text-slate-800">{totalOrders || orders.length}</h3>
-          </div>
-        </div>
-
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-4">
-          <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-            <DollarSign className="w-5.5 h-5.5" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Visible Volume</p>
-            <h3 className="text-xl font-black text-slate-800">₹{stats.totalRev.toLocaleString('en-IN')}</h3>
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Total Orders</p>
+            <h3 className="text-sm sm:text-xl font-black text-slate-800 truncate">{totalOrders || orders.length}</h3>
           </div>
         </div>
 
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-4">
-          <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-            <PackageCheck className="w-5.5 h-5.5" />
+        <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100 shadow-xs flex items-center gap-2.5 sm:gap-3.5 min-w-0 overflow-hidden">
+          <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shrink-0">
+            <DollarSign className="w-4 h-4 sm:w-5.5 sm:h-5.5" />
           </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Awaiting Dispatch</p>
-            <h3 className="text-xl font-black text-slate-800">{stats.pendingDispatch}</h3>
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Volume</p>
+            <h3 className="text-sm sm:text-xl font-black text-slate-800 truncate">₹{stats.totalRev.toLocaleString('en-IN')}</h3>
           </div>
         </div>
 
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-4">
-          <div className="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-            <CreditCard className="w-5.5 h-5.5" />
+        <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100 shadow-xs flex items-center gap-2.5 sm:gap-3.5 min-w-0 overflow-hidden">
+          <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold shrink-0">
+            <PackageCheck className="w-4 h-4 sm:w-5.5 sm:h-5.5" />
           </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">COD / Online Split</p>
-            <h3 className="text-sm font-black text-slate-800">
-              <span className="text-amber-600">{stats.codCount} COD</span> / <span className="text-indigo-600">{stats.onlineCount} Prepaid</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Awaiting Dispatch</p>
+            <h3 className="text-sm sm:text-xl font-black text-slate-800 truncate">{stats.pendingDispatch}</h3>
+          </div>
+        </div>
+
+        <div className="bg-white p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100 shadow-xs flex items-center gap-2.5 sm:gap-3.5 min-w-0 overflow-hidden">
+          <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold shrink-0">
+            <CreditCard className="w-4 h-4 sm:w-5.5 sm:h-5.5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Split</p>
+            <h3 className="text-[11px] sm:text-sm font-black text-slate-800 truncate">
+              <span className="text-amber-600">{stats.codCount} COD</span> / <span className="text-indigo-600">{stats.onlineCount} Online</span>
             </h3>
           </div>
         </div>
@@ -336,16 +338,16 @@ export const OrderList: React.FC = () => {
       )}
 
       {/* Filters & Search Controls Bar */}
-      <div className="flex flex-col lg:flex-row gap-3 bg-white p-4 rounded-2xl border border-slate-100 shadow-xs items-center justify-between">
+      <div className="bg-white p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100 shadow-xs space-y-2.5 lg:space-y-0 lg:flex lg:items-center lg:justify-between lg:gap-3 w-full max-w-full min-w-0">
         
         {/* Search Input Box */}
-        <div className="relative w-full lg:w-96">
+        <div className="relative w-full lg:w-80 xl:w-96 shrink-0">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search Order ID (e.g. F383BC), Name, Phone, Tracking..."
+            placeholder="Search Order ID, Name, Phone..."
             className="w-full bg-slate-50 border border-slate-200/80 rounded-xl pl-9 pr-8 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition"
           />
           {searchTerm && (
@@ -359,18 +361,13 @@ export const OrderList: React.FC = () => {
         </div>
 
         {/* Dropdowns & Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto justify-end">
-          <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold mr-1">
-            <Filter className="w-3.5 h-3.5" />
-            Filters:
-          </div>
-
+        <div className="grid grid-cols-2 lg:flex lg:flex-wrap lg:items-center gap-2 w-full lg:w-auto">
           <select
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-            className="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition"
+            className="w-full lg:w-auto bg-slate-50 border border-slate-200/80 rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition truncate"
           >
-            <option value="">All Fulfillment Statuses</option>
+            <option value="">All Statuses</option>
             <option value="PENDING">Pending (Unpaid)</option>
             <option value="INITIALIZED">Initialized</option>
             <option value="CONFIRMED">Confirmed</option>
@@ -383,20 +380,30 @@ export const OrderList: React.FC = () => {
           <select
             value={paymentFilter}
             onChange={(e) => { setPaymentFilter(e.target.value); setPage(1); }}
-            className="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition"
+            className="w-full lg:w-auto bg-slate-50 border border-slate-200/80 rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 transition truncate"
           >
-            <option value="">All Payment Types</option>
+            <option value="">All Payments</option>
             <option value="ONLINE">Prepaid Online</option>
-            <option value="COD">Cash on Delivery (COD)</option>
+            <option value="COD">Cash on Delivery</option>
           </select>
 
           <button 
             onClick={fetchOrders}
             disabled={loading}
-            className="bg-slate-900 text-white hover:bg-slate-800 font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-xs disabled:opacity-50 transition"
+            className="w-full lg:w-auto bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 transition cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
+            <span>Refresh</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => setShowSlipModal(true)}
+            className="w-full lg:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer active:scale-[0.99]"
+            title="Generate and Download 3x3 (9 per page) Order Slips PDF"
+          >
+            <Printer className="w-4 h-4 shrink-0" />
+            <span>Order Slips (9/Page)</span>
           </button>
         </div>
       </div>
@@ -583,55 +590,65 @@ export const OrderList: React.FC = () => {
 
       {/* Order Details Drawer / Modal */}
       {showOrderModal && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-x-hidden w-full max-w-[100vw]">
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setShowOrderModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto z-10 p-6 space-y-5">
+          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-[100vw] sm:max-w-2xl lg:max-w-3xl max-h-[88vh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0 animate-in slide-in-from-bottom-5 sm:slide-in-from-bottom-0">
             
-            {/* Modal Header */}
-            <div className="flex justify-between items-start border-b border-slate-100 pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-extrabold text-slate-900">Order #{selectedOrder.id.slice(-6).toUpperCase()}</h3>
+            {/* Mobile Drag Indicator Handle */}
+            <div className="w-12 h-1.5 bg-slate-300/80 rounded-full mx-auto mt-2.5 sm:hidden shrink-0" />
+
+            {/* Modal Header (Always Pinned & Accessible) */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 sm:px-6 sm:py-4 bg-white shrink-0 w-full max-w-full overflow-hidden">
+              <div className="min-w-0 flex-1 pr-2">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                  <h3 className="text-sm sm:text-lg font-extrabold text-slate-900 truncate">
+                    Order #{selectedOrder.id.slice(-6).toUpperCase()}
+                  </h3>
                   <button
+                    type="button"
                     onClick={() => handleCopyId(selectedOrder.id)}
-                    className="p-1 text-slate-400 hover:text-slate-600 rounded transition flex items-center gap-1 text-[10px] bg-slate-100 px-2 font-mono"
+                    className="p-1 text-slate-500 hover:text-slate-700 rounded transition flex items-center gap-1 text-[10px] bg-slate-100 hover:bg-slate-200 px-1.5 font-mono cursor-pointer shrink-0"
                     title="Copy full Order Token ID"
                   >
                     {copiedId ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                    {copiedId ? 'Copied' : selectedOrder.id.slice(0, 10) + '...'}
+                    <span>{copiedId ? 'Copied' : 'Copy'}</span>
                   </button>
                 </div>
-                <p className="text-xs text-slate-400 flex items-center gap-1 mt-1 font-medium">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  Placed on {new Date(selectedOrder.createdAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                <p className="text-[11px] sm:text-xs text-slate-400 flex items-center gap-1 mt-0.5 font-medium truncate">
+                  <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                  Placed on {new Date(selectedOrder.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <span className={`inline-block px-3 py-1 border rounded-full text-xs font-extrabold ${getOrderStatusColor(selectedOrder.status)}`}>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className={`inline-block px-2 py-0.5 border rounded-full text-[10px] sm:text-xs font-extrabold ${getOrderStatusColor(selectedOrder.status)}`}>
                   {selectedOrder.status}
                 </span>
                 <button
+                  type="button"
                   onClick={() => setShowOrderModal(false)}
-                  className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition"
+                  className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            {/* 2-Column Info & Administrative Controls */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            {/* Modal Scrollable Content */}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:p-6 space-y-4 min-w-0 w-full max-w-full">
+
+              {/* 2-Column Info & Administrative Controls */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4 text-xs min-w-0 w-full max-w-full">
               {/* Customer & Address Details */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
+              <div className="bg-slate-50 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100 space-y-3 min-w-0 w-full max-w-full overflow-hidden">
                 <h4 className="font-extrabold text-slate-800 flex items-center gap-2 text-xs uppercase tracking-wider">
                   <User className="w-4 h-4 text-indigo-500" />
                   Customer Information
                 </h4>
                 
-                <div className="space-y-1">
-                  <p className="font-extrabold text-slate-900 text-sm">{selectedOrder.createdBy?.user?.name || selectedOrder.createdBy?.user?.email || 'Customer Profile'}</p>
+                <div className="space-y-1 min-w-0">
+                  <p className="font-extrabold text-slate-900 text-sm break-words">{selectedOrder.createdBy?.user?.name || selectedOrder.createdBy?.user?.email || 'Customer Profile'}</p>
                   {selectedOrder.createdBy?.user?.phone && (
-                    <div className="flex items-center justify-between gap-2 mt-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mt-1">
                       <p className="text-slate-600 font-mono flex items-center gap-1.5 text-xs">
                         <Phone className="w-3.5 h-3.5 text-slate-400" /> {selectedOrder.createdBy.user.phone}
                       </p>
@@ -647,21 +664,21 @@ export const OrderList: React.FC = () => {
                     </div>
                   )}
                   {selectedOrder.createdBy?.user?.email && !selectedOrder.createdBy.user.email.startsWith('PLACEHOLDER#') && (
-                    <p className="text-slate-600 flex items-center gap-1.5 text-xs">
-                      <Mail className="w-3.5 h-3.5 text-slate-400" /> {selectedOrder.createdBy.user.email}
+                    <p className="text-slate-600 flex items-center gap-1.5 text-xs break-all">
+                      <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" /> {selectedOrder.createdBy.user.email}
                     </p>
                   )}
                 </div>
 
-                <div className="border-t border-slate-200/60 pt-2.5 space-y-1">
+                <div className="border-t border-slate-200/60 pt-2.5 space-y-1 min-w-0 w-full max-w-full">
                   <h4 className="font-extrabold text-slate-800 flex items-center gap-2 text-xs uppercase tracking-wider mb-1">
-                    <MapPin className="w-4 h-4 text-indigo-500" />
+                    <MapPin className="w-4 h-4 text-indigo-500 shrink-0" />
                     Delivery Destination
                   </h4>
                   {selectedOrder.address ? (
-                    <div className="text-slate-600 space-y-0.5 font-medium leading-relaxed">
-                      <p className="font-bold text-slate-800 text-xs">{selectedOrder.address.addressLine1 || selectedOrder.address.address || 'Address'}</p>
-                      <p>{selectedOrder.address.city}, {selectedOrder.address.state} - <span className="font-bold text-slate-800">{selectedOrder.address.zipcode}</span></p>
+                    <div className="text-slate-600 space-y-0.5 font-medium leading-relaxed min-w-0 w-full max-w-full">
+                      <p className="font-bold text-slate-800 text-xs break-all [overflow-wrap:anywhere]">{selectedOrder.address.addressLine1 || selectedOrder.address.address || 'Address'}</p>
+                      <p className="break-all [overflow-wrap:anywhere]">{selectedOrder.address.city}, {selectedOrder.address.state} - <span className="font-bold text-slate-800">{selectedOrder.address.zipcode}</span></p>
                       <p className="text-[10px] text-slate-400 mt-0.5 uppercase font-bold tracking-wider">Address Type: {selectedOrder.address.addressType || 'HOME'}</p>
                     </div>
                   ) : (
@@ -682,7 +699,7 @@ export const OrderList: React.FC = () => {
               </div>
 
               {/* Administrative Logistics Actions */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col justify-between space-y-3">
+              <div className="bg-slate-50 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100 flex flex-col justify-between space-y-3 min-w-0">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">
@@ -900,18 +917,18 @@ export const OrderList: React.FC = () => {
             </div>
 
             {/* Line Items Table */}
-            <div className="space-y-2">
+            <div className="space-y-2 w-full max-w-full overflow-hidden">
               <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">
                 Order Line Items ({selectedOrder.items?.length || 0})
               </h4>
-              <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden">
-                <table className="w-full text-left text-xs border-collapse">
+              <div className="w-full max-w-full bg-slate-50 rounded-xl border border-slate-100 overflow-x-auto min-w-0">
+                <table className="w-full text-left text-xs border-collapse min-w-[280px]">
                   <thead>
                     <tr className="border-b border-slate-200/60 text-slate-400 font-bold uppercase text-[10px]">
-                      <th className="p-3">Product Item</th>
-                      <th className="p-3">Unit Price</th>
-                      <th className="p-3">Qty</th>
-                      <th className="p-3 text-right">Subtotal</th>
+                      <th className="p-2.5 sm:p-3">Product Item</th>
+                      <th className="p-2.5 sm:p-3">Unit Price</th>
+                      <th className="p-2.5 sm:p-3">Qty</th>
+                      <th className="p-2.5 sm:p-3 text-right">Subtotal</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200/40">
@@ -923,32 +940,35 @@ export const OrderList: React.FC = () => {
                       const variantName = item.variantName || pv?.variant?.name || '';
                       const thumbnail = item.productThumbnailUrl || pv?.product?.thumbnailImageUrl || pc?.thumbnailImageUrl;
                       
-                      const unitPrice = typeof item.price === 'number' 
+                      const rawUnitPrice = typeof item.price === 'number' 
                         ? item.price 
-                        : (item.price?.discountedPrice || item.price?.sellingPrice || item.price?.price || 0);
+                        : (item.price?.discountedPrice && item.price.discountedPrice > 0
+                            ? item.price.discountedPrice
+                            : (item.price?.sellingPrice || item.price?.price || 0));
+                      const unitPrice = Math.round(rawUnitPrice);
                       const qty = item.quantity || 1;
-                      const subtotal = unitPrice * qty;
+                      const subtotal = Math.round(unitPrice * qty);
 
                       return (
                         <tr key={item.orderItemId || item.id || i}>
-                          <td className="p-3">
-                            <div className="flex items-center gap-3">
+                          <td className="p-2.5 sm:p-3">
+                            <div className="flex items-center gap-2.5">
                               {thumbnail ? (
-                                <img src={thumbnail} alt={name} className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0" />
+                                <img src={thumbnail} alt={name} className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg object-cover border border-slate-200 shrink-0" />
                               ) : (
-                                <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs shrink-0">
+                                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs shrink-0">
                                   📦
                                 </div>
                               )}
-                              <div className="min-w-0 max-w-[260px] sm:max-w-[320px]">
-                                <div className="font-extrabold text-slate-800 truncate" title={name}>{name}</div>
+                              <div className="min-w-0 max-w-[180px] sm:max-w-[280px]">
+                                <div className="font-extrabold text-slate-800 text-xs truncate" title={name}>{name}</div>
                                 {variantName && <div className="text-[10px] text-slate-500 font-medium truncate">Variant: {variantName}</div>}
                               </div>
                             </div>
                           </td>
-                          <td className="p-3 font-semibold text-slate-600">₹{unitPrice.toLocaleString('en-IN')}</td>
-                          <td className="p-3 font-bold text-slate-800">x{qty}</td>
-                          <td className="p-3 font-black text-slate-900 text-right">₹{subtotal.toLocaleString('en-IN')}</td>
+                          <td className="p-2.5 sm:p-3 font-semibold text-slate-600">₹{unitPrice.toLocaleString('en-IN')}</td>
+                          <td className="p-2.5 sm:p-3 font-bold text-slate-800">x{qty}</td>
+                          <td className="p-2.5 sm:p-3 font-black text-slate-900 text-right">₹{subtotal.toLocaleString('en-IN')}</td>
                         </tr>
                       );
                     })}
@@ -957,200 +977,207 @@ export const OrderList: React.FC = () => {
               </div>
             </div>
 
+            </div>
+
           </div>
         </div>
       )}
 
       {/* Manual Dispatch Modal */}
       {showManualDispatchModal && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setShowManualDispatchModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md z-10 p-6 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md max-h-[88vh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0">
+            <div className="w-12 h-1.5 bg-slate-300/80 rounded-full mx-auto mt-2.5 sm:hidden shrink-0" />
+            <div className="flex justify-between items-center border-b border-slate-100 px-4 py-3 sm:px-6 sm:py-4 bg-white shrink-0">
               <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
                 <Truck className="w-4 h-4 text-indigo-600" />
                 Manual Dispatch Details
               </h3>
-              <button onClick={() => setShowManualDispatchModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowManualDispatchModal(false)} className="text-slate-400 hover:text-slate-600 p-1">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveManualDispatch} className="space-y-3.5 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Delivery Partner / Courier</label>
-                <select
-                  value={dispatchForm.deliveryPartner}
-                  onChange={(e) => setDispatchForm({ ...dispatchForm, deliveryPartner: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-800 outline-none"
-                >
-                  <option value="DTDC">DTDC Courier</option>
-                  <option value="Bluedart">Bluedart Express</option>
-                  <option value="Delhivery">Delhivery</option>
-                  <option value="India Post">India Post (Speed Post)</option>
-                  <option value="Professional Couriers">The Professional Couriers</option>
-                  <option value="Shadowfax">Shadowfax</option>
-                  <option value="Xpressbees">Xpressbees</option>
-                  <option value="Self Delivery">Self Hand Delivery</option>
-                </select>
-              </div>
+            <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-6">
+              <form onSubmit={handleSaveManualDispatch} className="space-y-3 text-xs">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Delivery Partner / Courier</label>
+                  <select
+                    value={dispatchForm.deliveryPartner}
+                    onChange={(e) => setDispatchForm({ ...dispatchForm, deliveryPartner: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-800 outline-none"
+                  >
+                    <option value="DTDC">DTDC Courier</option>
+                    <option value="Bluedart">Bluedart Express</option>
+                    <option value="Delhivery">Delhivery</option>
+                    <option value="India Post">India Post (Speed Post)</option>
+                    <option value="Professional Couriers">The Professional Couriers</option>
+                    <option value="Shadowfax">Shadowfax</option>
+                    <option value="Xpressbees">Xpressbees</option>
+                    <option value="Self Delivery">Self Hand Delivery</option>
+                  </select>
+                </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Tracking ID / AWB Number *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. D1294810239"
-                  value={dispatchForm.trackingId}
-                  onChange={(e) => setDispatchForm({ ...dispatchForm, trackingId: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold text-slate-800 outline-none"
-                />
-              </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Tracking ID / AWB Number *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. D1294810239"
+                    value={dispatchForm.trackingId}
+                    onChange={(e) => setDispatchForm({ ...dispatchForm, trackingId: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold text-slate-800 outline-none"
+                  />
+                </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Tracking Web URL (Optional)</label>
-                <input
-                  type="url"
-                  placeholder="https://www.dtdc.in/tracking..."
-                  value={dispatchForm.trackingUrl}
-                  onChange={(e) => setDispatchForm({ ...dispatchForm, trackingUrl: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none"
-                />
-              </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Tracking Web URL (Optional)</label>
+                  <input
+                    type="url"
+                    placeholder="https://www.dtdc.in/tracking..."
+                    value={dispatchForm.trackingUrl}
+                    onChange={(e) => setDispatchForm({ ...dispatchForm, trackingUrl: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 outline-none"
+                  />
+                </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Expected Delivery Date (Optional)</label>
-                <input
-                  type="date"
-                  value={dispatchForm.expectedDeliveryDate}
-                  onChange={(e) => setDispatchForm({ ...dispatchForm, expectedDeliveryDate: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 outline-none"
-                />
-              </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Expected Delivery Date (Optional)</label>
+                  <input
+                    type="date"
+                    value={dispatchForm.expectedDeliveryDate}
+                    onChange={(e) => setDispatchForm({ ...dispatchForm, expectedDeliveryDate: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 outline-none"
+                  />
+                </div>
 
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowManualDispatchModal(false)}
-                  className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition"
-                >
-                  Save & Update Status
-                </button>
-              </div>
-            </form>
+                <div className="pt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowManualDispatchModal(false)}
+                    className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition"
+                  >
+                    Save & Update Status
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
 
       {/* Schedule Pickup Modal */}
       {showPickupModal && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setShowPickupModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md z-10 p-6 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md max-h-[88vh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0">
+            <div className="w-12 h-1.5 bg-slate-300/80 rounded-full mx-auto mt-2.5 sm:hidden shrink-0" />
+            <div className="flex justify-between items-center border-b border-slate-100 px-4 py-3 sm:px-6 sm:py-4 bg-white shrink-0">
               <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                📅 Schedule Shipway Courier Pickup
+                📅 Schedule Courier Pickup
               </h3>
-              <button onClick={() => setShowPickupModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowPickupModal(false)} className="text-slate-400 hover:text-slate-600 p-1">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSchedulePickup} className="space-y-3.5 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Select Carrier *</label>
-                <select
-                  required
-                  value={pickupForm.carrier_id}
-                  onChange={(e) => setPickupForm({ ...pickupForm, carrier_id: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-800 outline-none"
-                >
-                  {carriers.length === 0 ? (
-                    <option value="">No carriers loaded from Shipway API</option>
-                  ) : (
-                    carriers.map((c: any) => (
-                      <option key={c.id} value={c.id}>{c.name || c.carrier_name || `Carrier #${c.id}`}</option>
-                    ))
-                  )}
-                </select>
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Pickup Date *</label>
-                <input
-                  type="date"
-                  required
-                  value={pickupForm.pickup_date}
-                  onChange={(e) => setPickupForm({ ...pickupForm, pickup_date: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
+            <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-6">
+              <form onSubmit={handleSchedulePickup} className="space-y-3 text-xs">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Pickup Time</label>
+                  <label className="font-bold text-slate-700 block mb-1">Select Carrier *</label>
+                  <select
+                    required
+                    value={pickupForm.carrier_id}
+                    onChange={(e) => setPickupForm({ ...pickupForm, carrier_id: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-800 outline-none"
+                  >
+                    {carriers.length === 0 ? (
+                      <option value="">No carriers loaded from Shipway API</option>
+                    ) : (
+                      carriers.map((c: any) => (
+                        <option key={c.id} value={c.id}>{c.name || c.carrier_name || `Carrier #${c.id}`}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Pickup Date *</label>
                   <input
-                    type="time"
-                    value={pickupForm.pickup_time}
-                    onChange={(e) => setPickupForm({ ...pickupForm, pickup_time: e.target.value })}
+                    type="date"
+                    required
+                    value={pickupForm.pickup_date}
+                    onChange={(e) => setPickupForm({ ...pickupForm, pickup_date: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 outline-none"
                   />
                 </div>
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Close Time</label>
-                  <input
-                    type="time"
-                    value={pickupForm.office_close_time}
-                    onChange={(e) => setPickupForm({ ...pickupForm, office_close_time: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 outline-none"
-                  />
-                </div>
-              </div>
 
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPickupModal(false)}
-                  className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition"
-                >
-                  Schedule Pickup
-                </button>
-              </div>
-            </form>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Pickup Time</label>
+                    <input
+                      type="time"
+                      value={pickupForm.pickup_time}
+                      onChange={(e) => setPickupForm({ ...pickupForm, pickup_time: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Close Time</label>
+                    <input
+                      type="time"
+                      value={pickupForm.office_close_time}
+                      onChange={(e) => setPickupForm({ ...pickupForm, office_close_time: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPickupModal(false)}
+                    className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs transition"
+                  >
+                    Schedule Pickup
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
 
       {/* WHATSAPP NOTIFICATION PREVIEW MODAL */}
       {showWhatsAppModal && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setShowWhatsAppModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg z-10 p-6 space-y-4 border border-slate-100">
-            
-            {/* Modal Header */}
-            <div className="flex justify-between items-start border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shrink-0">
-                  <MessageSquare className="w-5 h-5 text-emerald-600" />
+          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[88vh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0">
+            <div className="w-12 h-1.5 bg-slate-300/80 rounded-full mx-auto mt-2.5 sm:hidden shrink-0" />
+            <div className="flex justify-between items-start border-b border-slate-100 px-4 py-3 sm:px-6 sm:py-4 bg-white shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shrink-0">
+                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" />
                 </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900">WhatsApp Notification Preview</h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Customer Phone: <strong className="font-mono text-slate-800">{selectedOrder.createdBy?.user?.phone || selectedOrder.address?.phone || 'No Phone Attached'}</strong>
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-extrabold text-slate-900 truncate">WhatsApp Preview</h3>
+                  <p className="text-[11px] sm:text-xs text-slate-500 font-medium truncate">
+                    Phone: <strong className="font-mono text-slate-800">{selectedOrder.createdBy?.user?.phone || selectedOrder.address?.phone || 'No Phone Attached'}</strong>
                   </p>
                 </div>
               </div>
@@ -1162,53 +1189,59 @@ export const OrderList: React.FC = () => {
               </button>
             </div>
 
-            {/* Editable Text Area Preview */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block">
-                Formatted WhatsApp Message Payload
-              </label>
-              <textarea
-                value={whatsAppText}
-                onChange={(e) => setWhatsAppText(e.target.value)}
-                rows={11}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-mono text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none leading-relaxed"
-              />
-              <p className="text-[10px] text-slate-400 font-medium">
-                * Product names are automatically truncated to max 20 chars with ellipsis (...)
-              </p>
+            <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-6 space-y-3.5">
+              <div className="space-y-1.5">
+                <label className="text-[10px] sm:text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block">
+                  Formatted WhatsApp Message Payload
+                </label>
+                <textarea
+                  value={whatsAppText}
+                  onChange={(e) => setWhatsAppText(e.target.value)}
+                  rows={9}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 text-xs font-mono text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none leading-relaxed"
+                />
+                <p className="text-[10px] text-slate-400 font-medium">
+                  * Product names are automatically formatted with dynamic price
+                </p>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(whatsAppText);
+                    setCopiedWhatsAppText(true);
+                    setTimeout(() => setCopiedWhatsAppText(false), 2000);
+                  }}
+                  className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {copiedWhatsAppText ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
+                  <span>{copiedWhatsAppText ? 'Copied' : 'Copy Text'}</span>
+                </button>
+
+                <a
+                  href={getWhatsAppUrl(selectedOrder.createdBy?.user?.phone || selectedOrder.address?.phone, whatsAppText)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShowWhatsAppModal(false)}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-sm active:scale-[0.99]"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Open WhatsApp Chat</span>
+                  <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                </a>
+              </div>
             </div>
-
-            {/* Action Buttons */}
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(whatsAppText);
-                  setCopiedWhatsAppText(true);
-                  setTimeout(() => setCopiedWhatsAppText(false), 2000);
-                }}
-                className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition flex items-center gap-1.5"
-              >
-                {copiedWhatsAppText ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
-                <span>{copiedWhatsAppText ? 'Copied' : 'Copy Text'}</span>
-              </button>
-
-              <a
-                href={getWhatsAppUrl(selectedOrder.createdBy?.user?.phone || selectedOrder.address?.phone, whatsAppText)}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setShowWhatsAppModal(false)}
-                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs transition flex items-center gap-2 shadow-sm active:scale-[0.99]"
-              >
-                <Send className="w-4 h-4" />
-                <span>Open WhatsApp Chat</span>
-                <ExternalLink className="w-3.5 h-3.5 opacity-80" />
-              </a>
-            </div>
-
           </div>
         </div>
       )}
+
+      {/* 9-in-a-Page Order Slip Generator Modal */}
+      <OrderSlipModal
+        isOpen={showSlipModal}
+        onClose={() => setShowSlipModal(false)}
+        orders={orders}
+      />
 
     </div>
   );

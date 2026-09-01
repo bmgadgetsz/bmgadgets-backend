@@ -1036,10 +1036,15 @@ const getPaginatedOrders = async (
             variantName: item.price.productVariant?.variant.name,
             comboName: item.price.productCombo?.name,
             price:
-              item.price.price -
-              (item.price.price *
-                (item.price.productVariant?.discountPercentage ?? 0)) /
-                100,
+              typeof item.price.discountedPrice === "number" &&
+              item.price.discountedPrice > 0
+                ? item.price.discountedPrice
+                : Math.round(
+                    item.price.price -
+                      (item.price.price *
+                        (item.price.productVariant?.discountPercentage ?? 0)) /
+                        100,
+                  ),
             hsn: item.price[itemType]?.product.hsn,
           };
         }),
@@ -1278,10 +1283,16 @@ const getInvoice = async (orderId: string) => {
       const itemType = curr.price.productVariant
         ? "productVariant"
         : "productCombo";
-      const discountedPrice =
-        curr.price.productVariant?.discountPercentage ?? 0;
-      const basePrice = curr.price.price;
-      const unitPrice = basePrice - basePrice * (discountedPrice / 100);
+      const unitPrice =
+        typeof curr.price.discountedPrice === "number" &&
+        curr.price.discountedPrice > 0
+          ? curr.price.discountedPrice
+          : Math.round(
+              curr.price.price -
+                (curr.price.price *
+                  (curr.price.productVariant?.discountPercentage ?? 0)) /
+                  100,
+            );
       const key = curr.price[itemType]?.product.createdById ?? "origino";
       const product = curr.price[itemType]?.product;
 

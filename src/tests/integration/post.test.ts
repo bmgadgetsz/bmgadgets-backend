@@ -3,6 +3,8 @@ import app from "@/app";
 import prisma from "@/config/prisma";
 import { status as httpStatus } from "http-status";
 
+import redis from "@/config/redis";
+
 describe("Post Routes:", () => {
   describe("POST /api/v1/posts:", () => {
     let testPost: Record<string, unknown>;
@@ -50,5 +52,15 @@ describe("Post Routes:", () => {
       });
       await prisma.post.delete({ where: { id: res.body.data.id } });
     });
+  });
+
+    afterAll(async () => {
+    try {
+      if (redis.status === 'ready' || redis.status === 'connecting') {
+        await redis.quit();
+      }
+    } catch {}
+    await prisma.$disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 500));
   });
 });

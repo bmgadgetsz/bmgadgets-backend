@@ -39,8 +39,18 @@ import {
 
 import { CategoryManager } from './CategoryManager';
 
-export const ProductList: React.FC = () => {
-  const [subTab, setSubTab] = useState<'catalog' | 'combos' | 'categories'>('catalog');
+interface ProductListProps {
+  initialSubTab?: 'catalog' | 'combos' | 'categories';
+}
+
+export const ProductList: React.FC<ProductListProps> = ({ initialSubTab = 'catalog' }) => {
+  const [subTab, setSubTab] = useState<'catalog' | 'combos' | 'categories'>(initialSubTab);
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
   const [products, setProducts] = useState<any[]>([]);
   const [combos, setCombos] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);

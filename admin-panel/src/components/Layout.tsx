@@ -23,15 +23,6 @@ const navigationItems = [
     activeBg: 'bg-indigo-500',
   },
   {
-    id: 'products',
-    name: 'Products & Stock',
-    icon: Package,
-    description: 'Catalog & inventory',
-    color: 'text-emerald-400',
-    bg: 'bg-emerald-500/10',
-    activeBg: 'bg-emerald-500',
-  },
-  {
     id: 'orders',
     name: 'Orders & Logistics',
     icon: ShoppingBag,
@@ -39,6 +30,15 @@ const navigationItems = [
     color: 'text-amber-400',
     bg: 'bg-amber-500/10',
     activeBg: 'bg-amber-500',
+  },
+  {
+    id: 'products',
+    name: 'Products & Stock',
+    icon: Package,
+    description: 'Catalog & inventory',
+    color: 'text-emerald-400',
+    bg: 'bg-emerald-500/10',
+    activeBg: 'bg-emerald-500',
   },
   {
     id: 'cms',
@@ -186,7 +186,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
   );
 
   return (
-    <div className="min-h-screen flex" style={{ background: '#f0f2f7' }}>
+    <div className="min-h-screen flex w-full max-w-full overflow-x-hidden" style={{ background: '#f0f2f7' }}>
 
       {/* Desktop Sidebar */}
       <aside className="hidden lg:block fixed inset-y-0 left-0 w-60 z-20">
@@ -194,36 +194,36 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
       </aside>
 
       {/* Main Area */}
-      <div className="flex-1 flex flex-col lg:pl-60 min-h-screen">
+      <div className="flex-1 flex flex-col lg:pl-60 min-h-screen w-full max-w-full min-w-0 overflow-x-hidden">
 
         {/* Top Header Bar */}
-        <header className="sticky top-0 z-30 flex items-center gap-4 px-5 py-3.5 border-b"
+        <header className="sticky top-0 z-30 flex items-center gap-4 px-4 py-3 sm:px-5 sm:py-3.5 border-b w-full max-w-full min-w-0"
           style={{ background: 'rgba(240,242,247,0.85)', backdropFilter: 'blur(16px)', borderColor: '#e2e8f0' }}>
 
           {/* Mobile hamburger */}
           <button
             onClick={() => setMobileMenuOpen(true)}
-            className="lg:hidden p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition"
+            className="lg:hidden p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition shrink-0 cursor-pointer"
           >
             <Menu className="w-4 h-4" />
           </button>
 
           {/* Breadcrumb */}
-          <div className="flex items-center gap-2 flex-1">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider hidden sm:block">BMGadgets</span>
             <ChevronRight className="w-3 h-3 text-slate-300 hidden sm:block" />
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0">
               {activeItem && (
-                <div className={`w-5 h-5 rounded-md flex items-center justify-center ${activeItem.bg}`}>
+                <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${activeItem.bg}`}>
                   <activeItem.icon className={`w-2.5 h-2.5 ${activeItem.color}`} />
                 </div>
               )}
-              <span className="text-sm font-bold text-slate-800">{activeItem?.name || 'Dashboard'}</span>
+              <span className="text-sm font-bold text-slate-800 truncate">{activeItem?.name || 'Dashboard'}</span>
             </div>
           </div>
 
           {/* Right side: live indicator + user pill */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-100">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-[10px] font-bold text-emerald-700">Live</span>
@@ -256,7 +256,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
         )}
 
         {/* Page Content */}
-        <main className="flex-1 px-4 py-6 md:px-7 md:py-7 max-w-[1400px] w-full mx-auto animate-fade-up">
+        <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6 md:px-7 md:py-7 max-w-[1400px] w-full max-w-full mx-auto min-w-0 overflow-x-hidden animate-fade-up">
           {children}
         </main>
       </div>

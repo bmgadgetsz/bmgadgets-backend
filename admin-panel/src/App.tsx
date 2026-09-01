@@ -65,6 +65,14 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 const AppContent: React.FC = () => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const [activeTab, setActiveTab] = useState('overview');
+  const [productSubTab, setProductSubTab] = useState<'catalog' | 'combos' | 'categories'>('catalog');
+
+  const handleNavigate = (tab: string, subTab?: 'catalog' | 'combos' | 'categories') => {
+    setActiveTab(tab);
+    if (subTab) {
+      setProductSubTab(subTab);
+    }
+  };
 
   if (!isAuthenticated) {
     return <Login />;
@@ -72,8 +80,8 @@ const AppContent: React.FC = () => {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {activeTab === 'overview' && <DashboardOverview />}
-      {activeTab === 'products' && <ProductList />}
+      {activeTab === 'overview' && <DashboardOverview onNavigate={handleNavigate} />}
+      {activeTab === 'products' && <ProductList initialSubTab={productSubTab} />}
       {activeTab === 'orders' && <OrderList />}
       {activeTab === 'cms' && <CmsManager />}
       {activeTab === 'operations' && <OperationsPanel />}

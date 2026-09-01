@@ -1280,15 +1280,24 @@ const updateProductStatus = (id: string, status: boolean) => {
 const getProductStats = async (period: Period = "Monthly") => {
   const { start, end, prevStart, prevEnd } = getPeriodRange(period);
 
-  // current totals (restricted to current period)
-  const [totalProducts, totalCategories, totalBrands] = await Promise.all([
+  // Overall totals across the entire store
+  const [totalProducts, totalCategories, totalBrands, totalOrders] = await Promise.all([
+    prisma.product.count(),
+    prisma.category.count(),
+    prisma.brand.count(),
+    prisma.order.count({ where: { status: { not: "CANCELLED" } } }),
+  ]);
+
+  // Items added in current period
+  const [currNewProducts, currNewCategories, currNewBrands, currOrders] = await Promise.all([
     prisma.product.count({ where: { createdAt: { gte: start, lte: end } } }),
     prisma.category.count({ where: { createdAt: { gte: start, lte: end } } }),
     prisma.brand.count({ where: { createdAt: { gte: start, lte: end } } }),
+    prisma.order.count({ where: { createdAt: { gte: start, lte: end }, status: { not: "CANCELLED" } } }),
   ]);
 
-  // previous period totals
-  const [prevProducts, prevCategories, prevBrands] = await Promise.all([
+  // Items added in previous period
+  const [prevNewProducts, prevNewCategories, prevNewBrands, prevOrders] = await Promise.all([
     prisma.product.count({
       where: { createdAt: { gte: prevStart, lte: prevEnd } },
     }),
@@ -1298,26 +1307,29 @@ const getProductStats = async (period: Period = "Monthly") => {
     prisma.brand.count({
       where: { createdAt: { gte: prevStart, lte: prevEnd } },
     }),
+    prisma.order.count({
+      where: { createdAt: { gte: prevStart, lte: prevEnd }, status: { not: "CANCELLED" } },
+    }),
   ]);
 
-  // percentage change (signed). Return null when prev === 0 to indicate "no previous"
+  // percentage change calculation
   const pctChange = (curr: number, prev: number) => {
     if (prev === 0) {
-      return prev === 0 && curr > 0 ? null : 0;
-      // note: returning `null` for prev===0 and curr>0 allows frontend to show "New".
-      // If you prefer numeric 100 for that case, return curr > 0 ? 100 : 0;
+      return curr > 0 ? 100 : 0;
     }
-    return ((curr - prev) / prev) * 100;
+    return Math.round(((curr - prev) / prev) * 100);
   };
 
   return {
     totalProducts,
     totalCategories,
     totalBrands,
+    totalOrders,
     percentages: {
-      products: pctChange(totalProducts, prevProducts),
-      categories: pctChange(totalCategories, prevCategories),
-      brands: pctChange(totalBrands, prevBrands),
+      products: pctChange(currNewProducts, prevNewProducts),
+      categories: pctChange(currNewCategories, prevNewCategories),
+      brands: pctChange(currNewBrands, prevNewBrands),
+      orders: pctChange(currOrders, prevOrders),
     },
     period,
     periodRange: { start: start.toISOString(), end: end.toISOString() },

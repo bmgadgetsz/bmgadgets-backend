@@ -517,20 +517,7 @@ const updateProductStatus = catchAsync(async (req, res) => {
 
 const getProductStatsHandler = catchAsync(async (req, res) => {
   const { period = "Weekly" } = req.query; // default to Weekly if not provided
-  const cacheKey = `product_stats:${period}`;
-  let data;
-
-  try {
-    const cached = await redis.get(cacheKey);
-    if (cached) data = JSON.parse(cached);
-  } catch (err) {
-    // Quiet fallback if Redis unavailable
-  }
-
-  if (!data) {
-    data = await productService.getProductStats(period as Period);
-    if (data) redis.set(cacheKey, JSON.stringify(data), "EX", 300).catch(() => {});
-  }
+  const data = await productService.getProductStats(period as Period);
 
   res.status(httpStatus.OK).json({
     success: true,
