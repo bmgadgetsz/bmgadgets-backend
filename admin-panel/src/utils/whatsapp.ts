@@ -105,6 +105,10 @@ export function formatWhatsAppOrderMessage(order: any): string {
     "*Track Your Order:*",
     "https://" + trackLink,
     "",
+    "*Note:*",
+    "• Tracking updates once dispatched.",
+    "• Unboxing video mandatory for return/refund.",
+    "",
     "*Thank you for shopping with BMGadgets!*"
   ];
 
@@ -154,6 +158,9 @@ export function formatWhatsAppDeliveryReviewMessage(order: any): string {
     "",
     reviewSection,
     "",
+    "*Note:*",
+    "• Unboxing video mandatory for return/refund.",
+    "",
     "Your feedback helps us continue bringing you factory-direct deals!",
     "",
     "Thank you again for choosing *BMGadgets*! Have a wonderful day!"
@@ -185,6 +192,9 @@ export function formatWhatsAppDispatchMessage(order: any): string {
     "",
     "*Track Shipment Live:*",
     trackLink,
+    "",
+    "*Note:*",
+    "• Unboxing video mandatory for return/refund.",
     "",
     "*Thank you for shopping with BMGadgets!*"
   ];
