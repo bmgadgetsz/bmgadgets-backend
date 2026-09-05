@@ -130,6 +130,18 @@ export const OrderSlipModal: React.FC<OrderSlipModalProps> = ({
     }
   }, [isOpen, orders, printedOrderIds]);
 
+  // Lock body scroll when slip modal is open
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
+
   // Filtered orders list
   const filteredOrders = useMemo(() => {
     if (!searchQuery.trim()) return orders;
@@ -205,16 +217,17 @@ export const OrderSlipModal: React.FC<OrderSlipModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        {/* Backdrop */}
-        <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
-          onClick={onClose}
-        />
+      {typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+            onClick={onClose}
+          />
 
-        {/* Modal Card */}
-        <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-[100vw] sm:max-w-4xl max-h-[88vh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0 animate-in slide-in-from-bottom-5 sm:slide-in-from-bottom-0">
-          <div className="w-12 h-1.5 bg-slate-300/80 rounded-full mx-auto mt-2.5 sm:hidden shrink-0" />
+          {/* Modal Card */}
+          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-[100vw] sm:max-w-4xl max-h-[85dvh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0 animate-in slide-in-from-bottom-5 sm:slide-in-from-bottom-0 pb-[env(safe-area-inset-bottom,0px)]">
+            <div className="w-12 h-1.5 bg-slate-300/80 rounded-full mx-auto mt-2.5 sm:hidden shrink-0" />
           
           {/* Header */}
           <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
@@ -523,7 +536,9 @@ export const OrderSlipModal: React.FC<OrderSlipModalProps> = ({
             </div>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
+    )}
 
       {/* ========================================================================= */}
       {/* PORTAL-MOUNTED HIGH-PRECISION A4 PRINT ENGINE (Zero Margins, Zero Offset) */}

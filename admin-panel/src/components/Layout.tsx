@@ -256,7 +256,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
         )}
 
         {/* Page Content */}
-        <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6 md:px-7 md:py-7 max-w-[1400px] w-full max-w-full mx-auto min-w-0 overflow-x-hidden animate-fade-up">
+        <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6 md:px-7 md:py-7 max-w-[1400px] w-full max-w-full mx-auto min-w-0 overflow-x-hidden animate-fade-in">
           {children}
         </main>
       </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../services/api';
 import { formatWhatsAppOrderMessage, formatWhatsAppDispatchMessage, formatWhatsAppDeliveryReviewMessage, getWhatsAppUrl } from '../utils/whatsapp';
 import { OrderSlipModal } from './OrderSlipModal';
@@ -86,6 +87,28 @@ export const OrderList: React.FC = () => {
     package_count: 1, carrier_id: '', warehouse_id: '', return_warehouse_id: '',
     payment_type: 'prepaid'
   });
+
+  // Lock body scroll when any modal is open to ensure clean viewport presentation
+  const isAnyModalOpen = Boolean(
+    showOrderModal ||
+    showPickupModal ||
+    showManualDispatchModal ||
+    showSlipModal ||
+    showDeleteConfirmModal ||
+    showCancelConfirmModal ||
+    showWhatsAppModal
+  );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (isAnyModalOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isAnyModalOpen]);
 
   const handleCopyId = (id: string) => {
     navigator.clipboard.writeText(id);
@@ -658,10 +681,10 @@ export const OrderList: React.FC = () => {
       </div>
 
       {/* Order Details Drawer / Modal */}
-      {showOrderModal && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-x-hidden w-full max-w-[100vw]">
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setShowOrderModal(false)} />
-          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-[100vw] sm:max-w-2xl lg:max-w-3xl max-h-[88vh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0 animate-in slide-in-from-bottom-5 sm:slide-in-from-bottom-0">
+      {showOrderModal && selectedOrder && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto w-full max-w-[100vw]">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" onClick={() => setShowOrderModal(false)} />
+          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-[100vw] sm:max-w-2xl lg:max-w-3xl max-h-[85dvh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0 animate-in slide-in-from-bottom-5 sm:slide-in-from-bottom-0 pb-[env(safe-area-inset-bottom,0px)]">
             
             {/* Mobile Drag Indicator Handle */}
             <div className="w-12 h-1.5 bg-slate-300/80 rounded-full mx-auto mt-2.5 sm:hidden shrink-0" />
@@ -1086,14 +1109,15 @@ export const OrderList: React.FC = () => {
             </div>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Manual Dispatch Modal */}
-      {showManualDispatchModal && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setShowManualDispatchModal(false)} />
-          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md max-h-[88vh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0">
+      {showManualDispatchModal && selectedOrder && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" onClick={() => setShowManualDispatchModal(false)} />
+          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md max-h-[85dvh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0 pb-[env(safe-area-inset-bottom,0px)]">
             <div className="w-12 h-1.5 bg-slate-300/80 rounded-full mx-auto mt-2.5 sm:hidden shrink-0" />
             <div className="flex justify-between items-center border-b border-slate-100 px-4 py-3 sm:px-6 sm:py-4 bg-white shrink-0">
               <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
@@ -1177,14 +1201,15 @@ export const OrderList: React.FC = () => {
               </form>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Schedule Pickup Modal */}
-      {showPickupModal && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setShowPickupModal(false)} />
-          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md max-h-[88vh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0">
+      {showPickupModal && selectedOrder && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" onClick={() => setShowPickupModal(false)} />
+          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md max-h-[85dvh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0 pb-[env(safe-area-inset-bottom,0px)]">
             <div className="w-12 h-1.5 bg-slate-300/80 rounded-full mx-auto mt-2.5 sm:hidden shrink-0" />
             <div className="flex justify-between items-center border-b border-slate-100 px-4 py-3 sm:px-6 sm:py-4 bg-white shrink-0">
               <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
@@ -1266,14 +1291,15 @@ export const OrderList: React.FC = () => {
               </form>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* WHATSAPP NOTIFICATION PREVIEW MODAL */}
-      {showWhatsAppModal && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setShowWhatsAppModal(false)} />
-          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[88vh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0">
+      {showWhatsAppModal && selectedOrder && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" onClick={() => setShowWhatsAppModal(false)} />
+          <div className="relative bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[85dvh] sm:max-h-[90vh] flex flex-col z-10 overflow-hidden border border-slate-100 min-w-0 pb-[env(safe-area-inset-bottom,0px)]">
             <div className="w-12 h-1.5 bg-slate-300/80 rounded-full mx-auto mt-2.5 sm:hidden shrink-0" />
             <div className="flex justify-between items-start border-b border-slate-100 px-4 py-3 sm:px-6 sm:py-4 bg-white shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -1339,12 +1365,13 @@ export const OrderList: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Delete Order Confirmation Guard Modal */}
-      {showDeleteConfirmModal && selectedOrder && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+      {showDeleteConfirmModal && selectedOrder && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 overflow-y-auto">
           <div
             className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200"
             onClick={() => !isDeleting && setShowDeleteConfirmModal(false)}
@@ -1438,12 +1465,13 @@ export const OrderList: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Cancel Order Confirmation Modal */}
-      {showCancelConfirmModal && selectedOrder && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+      {showCancelConfirmModal && selectedOrder && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 overflow-y-auto">
           <div
             className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200"
             onClick={() => !isCancelling && setShowCancelConfirmModal(false)}
@@ -1509,7 +1537,8 @@ export const OrderList: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 9-in-a-Page Order Slip Generator Modal */}
