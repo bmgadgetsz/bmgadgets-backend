@@ -90,8 +90,14 @@ const verifyPayment = catchAsync(async (req, res) => {
           razorpayPaymentMethod: payment.method,
           razorpayPaymentTime: new Date(),
           couponId: oldOrder?.tempCouponId,
+          stockDeducted: true,
         },
       });
+
+      // Deduct warehouse inventory upon payment verification
+      if (!oldOrder.stockDeducted) {
+        await orderService.deductStockForOrder(oldOrder.id, tx);
+      }
       // Update custoemr wallet
       await tx.customerProfile.update({
         where: { id: oldOrder?.createdById },
@@ -274,7 +280,7 @@ const deleteOrder = catchAsync(async (req, res) => {
     if (error instanceof PrismaClientKnownRequestError)
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        "Product cannot be deleted as it is associated with other resources",
+        "Order cannot be deleted as it is associated with other resources",
       );
     throw error;
   }

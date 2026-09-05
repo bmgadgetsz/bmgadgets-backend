@@ -46,6 +46,7 @@ model Order {
   gst            Float
   couponDiscount Float
   shippingCost   Float       @default(0)
+  stockDeducted  Boolean     @default(false)
 
   createdAt     DateTime       @default(now())
   // opposite relation: shipments that belong to this order

@@ -306,6 +306,190 @@ interface CreateOrderInput {
   }>;
 }
 
+const deductStockForOrder = async (
+  orderId: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
+) => {
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    include: {
+      items: {
+        include: {
+          price: {
+            include: {
+              productVariant: true,
+              productCombo: {
+                include: { items: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!order || !order.items || order.items.length === 0) return;
+
+  for (const item of order.items) {
+    const qty = item.quantity || 1;
+    const pv = item.price?.productVariant;
+    const pc = item.price?.productCombo;
+
+    if (pv) {
+      let remainingToDeduct = qty;
+      const stocks = await db.warehouseStock.findMany({
+        where: { productVariantId: pv.id },
+        orderBy: { productCount: "desc" },
+      });
+
+      if (stocks.length > 0) {
+        for (const st of stocks) {
+          if (remainingToDeduct <= 0) break;
+          const take = Math.min(st.productCount, remainingToDeduct);
+          if (take > 0) {
+            await db.warehouseStock.update({
+              where: { id: st.id },
+              data: { productCount: { decrement: take } },
+            });
+            remainingToDeduct -= take;
+          }
+        }
+        if (remainingToDeduct > 0) {
+          await db.warehouseStock.update({
+            where: { id: stocks[0].id },
+            data: { productCount: { decrement: remainingToDeduct } },
+          });
+        }
+      }
+    } else if (pc) {
+      let remainingToDeduct = qty;
+      const comboStocks = await db.warehouseComboStock.findMany({
+        where: { productComboId: pc.id },
+        orderBy: { comboCount: "desc" },
+      });
+
+      if (comboStocks.length > 0) {
+        for (const cs of comboStocks) {
+          if (remainingToDeduct <= 0) break;
+          const take = Math.min(cs.comboCount, remainingToDeduct);
+          if (take > 0) {
+            await db.warehouseComboStock.update({
+              where: { id: cs.id },
+              data: { comboCount: { decrement: take } },
+            });
+            remainingToDeduct -= take;
+          }
+        }
+        if (remainingToDeduct > 0) {
+          await db.warehouseComboStock.update({
+            where: { id: comboStocks[0].id },
+            data: { comboCount: { decrement: remainingToDeduct } },
+          });
+        }
+      } else if (pc.items && pc.items.length > 0) {
+        for (const ci of pc.items) {
+          const compVariantId = ci.productVariantId;
+          const compQty = (ci.quantity ?? 1) * qty;
+          let compRemaining = compQty;
+          const compStocks = await db.warehouseStock.findMany({
+            where: { productVariantId: compVariantId },
+            orderBy: { productCount: "desc" },
+          });
+          if (compStocks.length > 0) {
+            for (const cst of compStocks) {
+              if (compRemaining <= 0) break;
+              const take = Math.min(cst.productCount, compRemaining);
+              if (take > 0) {
+                await db.warehouseStock.update({
+                  where: { id: cst.id },
+                  data: { productCount: { decrement: take } },
+                });
+                compRemaining -= take;
+              }
+            }
+            if (compRemaining > 0) {
+              await db.warehouseStock.update({
+                where: { id: compStocks[0].id },
+                data: { productCount: { decrement: compRemaining } },
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+const restoreStockForOrder = async (
+  orderId: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
+) => {
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    include: {
+      items: {
+        include: {
+          price: {
+            include: {
+              productVariant: true,
+              productCombo: {
+                include: { items: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!order || !order.items || order.items.length === 0) return;
+
+  for (const item of order.items) {
+    const qty = item.quantity || 1;
+    const pv = item.price?.productVariant;
+    const pc = item.price?.productCombo;
+
+    if (pv) {
+      const st = await db.warehouseStock.findFirst({
+        where: { productVariantId: pv.id },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (st) {
+        await db.warehouseStock.update({
+          where: { id: st.id },
+          data: { productCount: { increment: qty } },
+        });
+      }
+    } else if (pc) {
+      const cs = await db.warehouseComboStock.findFirst({
+        where: { productComboId: pc.id },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (cs) {
+        await db.warehouseComboStock.update({
+          where: { id: cs.id },
+          data: { comboCount: { increment: qty } },
+        });
+      } else if (pc.items && pc.items.length > 0) {
+        for (const ci of pc.items) {
+          const compVariantId = ci.productVariantId;
+          const compQty = (ci.quantity ?? 1) * qty;
+          const cst = await db.warehouseStock.findFirst({
+            where: { productVariantId: compVariantId },
+            orderBy: { updatedAt: "desc" },
+          });
+          if (cst) {
+            await db.warehouseStock.update({
+              where: { id: cst.id },
+              data: { productCount: { increment: compQty } },
+            });
+          }
+        }
+      }
+    }
+  }
+};
+
 const createOrder = async (params: CreateOrderInput) => {
   const { currentUser, paymentType, couponCode, customer, address: addressPayload, items } = params;
   let customerProfileId = currentUser?.customerProfile?.id;
@@ -642,6 +826,13 @@ const createOrder = async (params: CreateOrderInput) => {
             orderId: newOrder.id,
           },
         });
+
+        // Deduct inventory stock for COD / fully wallet paid orders
+        await deductStockForOrder(newOrder.id, tx);
+        await tx.order.update({
+          where: { id: newOrder.id },
+          data: { stockDeducted: true },
+        });
       }
 
       if (paymentType === "ONLINE" && customerProfile.wallet > 0) {
@@ -896,8 +1087,8 @@ const getPaginatedOrders = async (
 
   const whereConditions = conditions.length ? { AND: conditions } : {};
 
-  const [result, total] = await Promise.all([
-    await prisma.order.findMany({
+  const [result, total, agg, statusGroups, paymentGroups] = await Promise.all([
+    prisma.order.findMany({
       where: whereConditions,
       orderBy: { [sortBy]: sortOrder },
 
@@ -974,8 +1165,53 @@ const getPaginatedOrders = async (
       skip,
       take,
     }),
-    await prisma.order.count({ where: whereConditions }),
+    prisma.order.count({ where: whereConditions }),
+    prisma.order.aggregate({
+      where: whereConditions,
+      _sum: {
+        subtotal: true,
+        shippingCost: true,
+        couponDiscount: true,
+      },
+    }),
+    prisma.order.groupBy({
+      by: ["status"],
+      where: whereConditions,
+      _count: { _all: true },
+    }),
+    prisma.order.groupBy({
+      by: ["paymentType"],
+      where: whereConditions,
+      _count: { _all: true },
+    }),
   ]);
+
+  const totalVolume = Math.round(
+    (agg._sum.subtotal || 0) +
+      (agg._sum.shippingCost || 0) -
+      (agg._sum.couponDiscount || 0),
+  );
+
+  let awaitingDispatch = 0;
+  for (const sg of statusGroups) {
+    if (
+      sg.status === "CONFIRMED" ||
+      sg.status === "PAID" ||
+      sg.status === "INITIALIZED"
+    ) {
+      awaitingDispatch += sg._count._all;
+    }
+  }
+
+  let codCount = 0;
+  let onlineCount = 0;
+  for (const pg of paymentGroups) {
+    if (pg.paymentType === "COD") {
+      codCount += pg._count._all;
+    } else if (pg.paymentType === "ONLINE") {
+      onlineCount += pg._count._all;
+    }
+  }
 
   const allOrderItemIds = result.flatMap((order) =>
     order.items.map((item) => item.id),
@@ -1004,7 +1240,18 @@ const getPaginatedOrders = async (
   }
 
   return {
-    meta: { total, page, limit: take },
+    meta: {
+      total,
+      page,
+      limit: take,
+      stats: {
+        totalOrders: total,
+        totalRev: totalVolume,
+        pendingDispatch: awaitingDispatch,
+        codCount,
+        onlineCount,
+      },
+    },
     data: result.map((order) => {
       return {
         ...order,
@@ -1072,6 +1319,31 @@ const updateOrder = async (id: string, data: any) => {
   }
   if (data.status === "DELIVERED" && !data.deliveredAt) {
     updatePayload.deliveredAt = new Date();
+  }
+
+  // Handle stock deduction / restoration on status change
+  if (data.status === "CANCELLED" && oldOrder?.status !== "CANCELLED") {
+    if (oldOrder?.stockDeducted) {
+      await restoreStockForOrder(id);
+      updatePayload.stockDeducted = false;
+    }
+  } else if (
+    oldOrder?.status === "CANCELLED" &&
+    data.status &&
+    data.status !== "CANCELLED"
+  ) {
+    if (!oldOrder.stockDeducted) {
+      await deductStockForOrder(id);
+      updatePayload.stockDeducted = true;
+    }
+  } else if (
+    !oldOrder?.stockDeducted &&
+    data.status &&
+    data.status !== "CANCELLED" &&
+    ["CONFIRMED", "SHIPPED", "DELIVERED", "PAID"].includes(data.status)
+  ) {
+    await deductStockForOrder(id);
+    updatePayload.stockDeducted = true;
   }
 
   const updatedOrder = await prisma.order.update({
@@ -1158,7 +1430,72 @@ const updateOrder = async (id: string, data: any) => {
 };
 
 const deleteOrder = async (id: string) => {
-  return prisma.order.delete({ where: { id } });
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      items: {
+        select: { id: true },
+      },
+    },
+  });
+
+  if (!order) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Order not found");
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    // 1. If stock was deducted and order was not cancelled, return stock to warehouse
+    if (order.stockDeducted && order.status !== "CANCELLED") {
+      await restoreStockForOrder(id, tx);
+    }
+
+    const orderItemIds = order.items.map((it) => it.id);
+
+    // 2. Delete notifications related to this order
+    await tx.notification.deleteMany({
+      where: { orderId: id },
+    });
+
+    // 3. Delete return requests related to order items
+    if (orderItemIds.length > 0) {
+      const returnRequests = await tx.returnRequest.findMany({
+        where: { orderItemId: { in: orderItemIds } },
+        select: { id: true },
+      });
+      const returnRequestIds = returnRequests.map((r) => r.id);
+      if (returnRequestIds.length > 0) {
+        await tx.notification.deleteMany({
+          where: { returnRequestId: { in: returnRequestIds } },
+        });
+        await tx.shipment.deleteMany({
+          where: { returnRequestId: { in: returnRequestIds } },
+        });
+        await tx.returnRequest.deleteMany({
+          where: { id: { in: returnRequestIds } },
+        });
+      }
+
+      // Delete vendor payout items linked to order items
+      await tx.vendorPayoutItem.deleteMany({
+        where: { orderItemId: { in: orderItemIds } },
+      });
+    }
+
+    // 4. Delete shipments linked to this order
+    await tx.shipment.deleteMany({
+      where: { orderId: id },
+    });
+
+    // 5. Delete order items
+    await tx.orderItem.deleteMany({
+      where: { orderId: id },
+    });
+
+    // 6. Delete the order
+    return await tx.order.delete({
+      where: { id },
+    });
+  });
 };
 
 const reorder = async (id: string) => {
@@ -1417,5 +1754,7 @@ const orderService = {
   getOrderSummary,
   getInvoice,
   calculateCart,
+  deductStockForOrder,
+  restoreStockForOrder,
 };
 export default orderService;
