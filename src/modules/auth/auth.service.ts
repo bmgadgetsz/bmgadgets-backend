@@ -113,7 +113,7 @@ export const validateSessionToken = async (
     // Update session
     await prisma.session.update({
       where: {
-        sessionId: session.id,
+        id: session.id,
       },
       data: {
         expiresAt: session.expiresAt,
